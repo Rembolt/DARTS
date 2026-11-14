@@ -7,6 +7,6 @@ loadServerConfig()
   .then(config => {
     status.textContent = `Ready: model ${config.modelId}`;
   })
-  .catch((err: Error) => {
-    status.textContent = err.message;
+  .catch((err: unknown) => {
+    status.textContent = err instanceof Error ? err.message : String(err);
   });

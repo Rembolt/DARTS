@@ -1,6 +1,7 @@
 {
   "name": "mei-princeton",
   "private": true,
+  "engines": { "node": ">=20.11" },
   "workspaces": [
     "app",
     "server"

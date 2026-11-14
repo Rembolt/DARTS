@@ -2,8 +2,9 @@
   "name": "server",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=20.11" },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --include ../.env src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

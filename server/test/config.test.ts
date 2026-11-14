@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, MODEL_ID } from '../src/app.js';
@@ -30,8 +30,12 @@ describe('GET /api/config', () => {
 describe('loadEnv', () => {
   it('strips quotes and surrounding spaces', () => {
     const dir = mkdtempSync(join(tmpdir(), 'env-'));
-    writeFileSync(join(dir, '.env'), '# comment\nMATTERPORT_SDK_KEY = "sdk123" \nOTHER=x\n');
-    expect(loadEnv(join(dir, '.env')).MATTERPORT_SDK_KEY).toBe('sdk123');
+    try {
+      writeFileSync(join(dir, '.env'), '# comment\nMATTERPORT_SDK_KEY = "sdk123" \nOTHER=x\n');
+      expect(loadEnv(join(dir, '.env')).MATTERPORT_SDK_KEY).toBe('sdk123');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('returns an empty object when the file does not exist', () => {

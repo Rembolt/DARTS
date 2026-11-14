@@ -25,6 +25,19 @@ describe('loadServerConfig', () => {
     await expect(loadServerConfig(html)).rejects.toThrow('Server not reachable. Start it with: npm run dev');
   });
 
+  it('reports the status when a running server answers with a non-JSON error', async () => {
+    const notFound = (async () => new Response('<html>Cannot GET</html>', { status: 404 })) as typeof fetch;
+    await expect(loadServerConfig(notFound)).rejects.toThrow('Server error: HTTP 404');
+  });
+
+  it('reports the status when an error answer has no message', async () => {
+    await expect(loadServerConfig(respond(500, {}))).rejects.toThrow('Server error: HTTP 500');
+  });
+
+  it('rejects a JSON null body with a readable message', async () => {
+    await expect(loadServerConfig(respond(200, null))).rejects.toThrow('Server sent an incomplete config');
+  });
+
   it('rejects a config without a key', async () => {
     await expect(loadServerConfig(respond(200, { modelId: 'Ki9YdfpNKum' })))
       .rejects.toThrow('Server sent an incomplete config');
