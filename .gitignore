@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+
+# CoStar data is licensed for the hackathon only and too large for GitHub
+costar-kit/data/
+costar-kit/records/
+
+# Generated output
+scripts/output/
+__pycache__/
