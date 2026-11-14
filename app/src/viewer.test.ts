@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { viewerUrl, withTimeout, formatPose, TimeoutError, startFailureMessage } from './viewer';
+import { viewerUrl, notifyIfSlow, formatPose, startFailureMessage } from './viewer';
 
 describe('viewerUrl', () => {
   it('builds the Bundle address', () => {
@@ -12,42 +12,36 @@ describe('viewerUrl', () => {
   });
 });
 
-describe('withTimeout', () => {
+describe('notifyIfSlow', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('passes the result through when it arrives in time', async () => {
-    await expect(withTimeout(Promise.resolve(7), 1000, 'too slow')).resolves.toBe(7);
+  it('passes the result through and stays quiet when it arrives in time', async () => {
+    vi.useFakeTimers();
+    const onSlow = vi.fn();
+    await expect(notifyIfSlow(Promise.resolve(7), 1000, onSlow)).resolves.toBe(7);
+    vi.advanceTimersByTime(5000);
+    expect(onSlow).not.toHaveBeenCalled();
   });
 
-  it('rejects with the message when time runs out', async () => {
+  it('notifies once when time runs out, and still delivers a late result', async () => {
     vi.useFakeTimers();
-    const p = withTimeout(new Promise(() => {}), 60_000, 'Viewer did not start: timed out after 60 s');
+    const onSlow = vi.fn();
+    let finish!: (v: string) => void;
+    const p = notifyIfSlow(new Promise<string>(r => { finish = r; }), 60_000, onSlow);
     vi.advanceTimersByTime(60_000);
-    await expect(p).rejects.toThrow('Viewer did not start: timed out after 60 s');
+    expect(onSlow).toHaveBeenCalledTimes(1);
+    finish('late');
+    await expect(p).resolves.toBe('late');
   });
 
-  it('rejects with a TimeoutError', async () => {
-    vi.useFakeTimers();
-    const p = withTimeout(new Promise(() => {}), 10, 'slow');
-    const caught = p.catch((e: unknown) => e);
-    vi.advanceTimersByTime(10);
-    expect(await caught).toBeInstanceOf(TimeoutError);
+  it('passes errors through', async () => {
+    await expect(notifyIfSlow(Promise.reject(new Error('boom')), 1000, () => {})).rejects.toThrow('boom');
   });
 });
 
 describe('startFailureMessage', () => {
-  it('keeps the timeout text as it is', () => {
-    expect(startFailureMessage(new TimeoutError('Viewer did not start: timed out after 60 s')))
-      .toBe('Viewer did not start: timed out after 60 s');
-  });
-
-  it('does not treat a lookalike message as a timeout', () => {
-    expect(startFailureMessage(new Error('Viewer did not start: timed out after 60 s')))
-      .toBe('Viewer did not start: Viewer did not start: timed out after 60 s');
-  });
-
   it('prefixes the message of other errors', () => {
     expect(startFailureMessage(new Error('the viewer page did not load the SDK')))
       .toBe('Viewer did not start: the viewer page did not load the SDK');

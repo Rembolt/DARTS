@@ -5,6 +5,9 @@ import express from 'express';
 /** The only model this server serves (mvp-design.md 4.1). */
 export const MODEL_ID = 'Ki9YdfpNKum';
 
+/** Sent with HTTP 503 for any /bundle request while the Bundle is not fetched. The app shows it as is. */
+export const BUNDLE_MISSING = 'Matterport Bundle missing. Run: npm run fetch-bundle';
+
 export interface AppOptions {
   /** Folder holding the unpacked Matterport Bundle (written by `npm run fetch-bundle`). */
   bundleDir?: string;
@@ -17,14 +20,15 @@ export function createApp(
   const app = express();
   const { bundleDir } = options;
 
-  // Checked per request, so fetching the Bundle while the server runs needs no restart.
-  const bundle = bundleDir ? { dir: bundleDir, serve: express.static(bundleDir) } : undefined;
-  app.use('/bundle', (req, res, next) => {
-    if (bundle && existsSync(join(bundle.dir, 'showcase.html'))) {
-      bundle.serve(req, res, next);
+  // express.static falls through to the next handler when a file is not there. Only then do we look at the
+  // disk, so normal asset requests never block on a stat, and a Bundle fetched while the server runs needs no restart.
+  if (bundleDir) app.use('/bundle', express.static(bundleDir));
+  app.use('/bundle', (_req, res) => {
+    if (bundleDir && existsSync(join(bundleDir, 'showcase.html'))) {
+      res.status(404).type('text/plain').send('Not in the Matterport Bundle');
       return;
     }
-    res.status(503).type('text/plain').send('Matterport Bundle missing. Run: npm run fetch-bundle');
+    res.status(503).type('text/plain').send(BUNDLE_MISSING);
   });
 
   // Only the SDK key may reach the browser; the API token never does.

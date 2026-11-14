@@ -16,37 +16,23 @@ export type MpSdk = {
   Camera: { pose: { subscribe(cb: (pose: Pose) => void): { cancel(): void } } };
 };
 
-const START_TIMEOUT_MS = 60_000;
-const START_TIMEOUT_MESSAGE = 'Viewer did not start: timed out after 60 s';
+const SLOW_START_MS = 60_000;
+export const SLOW_START_MESSAGE = 'Tour is taking longer than 60 s to start; still waiting…';
 
 /** The address of the self-hosted viewer for this model. */
 export function viewerUrl(config: ServerConfig): string {
   return `/bundle/showcase.html?m=${encodeURIComponent(config.modelId)}&applicationKey=${encodeURIComponent(config.sdkKey)}&play=1&qs=1`;
 }
 
-/** Thrown by `withTimeout` when time runs out. */
-export class TimeoutError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'TimeoutError';
-  }
-}
-
-/** Reject with a `TimeoutError` carrying `message` if `promise` has not settled after `ms`. */
-export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new TimeoutError(message)), ms);
-    promise.then(
-      value => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err: unknown) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
+/**
+ * Call `onSlow` once if `promise` has not settled after `ms`, but keep waiting for it: a slow tour that starts late
+ * still connects. Returns `promise` unchanged.
+ */
+export function notifyIfSlow<T>(promise: Promise<T>, ms: number, onSlow: () => void): Promise<T> {
+  const timer = setTimeout(onSlow, ms);
+  const clear = () => clearTimeout(timer);
+  promise.then(clear, clear);
+  return promise;
 }
 
 type MpSdkGlobal = { connect(win: Window): Promise<MpSdk> };
@@ -62,17 +48,19 @@ async function connect(iframe: HTMLIFrameElement): Promise<MpSdk> {
 
 /** The text to show when the viewer fails to start. Never `[object Object]`. */
 export function startFailureMessage(err: unknown): string {
-  if (err instanceof TimeoutError) return err.message;
   let detail = 'unknown error';
   if (err instanceof Error) detail = err.message;
   else if (typeof err === 'string' || typeof err === 'number' || typeof err === 'boolean') detail = String(err);
   return `Viewer did not start: ${detail}`;
 }
 
-/** Connect to the SDK inside the viewer iframe and wait until the tour is playing. Rejects with a message ready to show. */
-export async function connectViewer(iframe: HTMLIFrameElement): Promise<MpSdk> {
+/**
+ * Connect to the SDK inside the viewer iframe and wait until the tour is playing, however long it takes.
+ * `onSlow` gets a message ready to show if that takes more than 60 s. Rejects with a message ready to show.
+ */
+export async function connectViewer(iframe: HTMLIFrameElement, onSlow: (message: string) => void = () => {}): Promise<MpSdk> {
   try {
-    return await withTimeout(connect(iframe), START_TIMEOUT_MS, START_TIMEOUT_MESSAGE);
+    return await notifyIfSlow(connect(iframe), SLOW_START_MS, () => onSlow(SLOW_START_MESSAGE));
   } catch (err) {
     throw new Error(startFailureMessage(err));
   }

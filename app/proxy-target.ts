@@ -1,5 +1,6 @@
-/** Where Vite's dev proxy sends /api and /bundle: our server, on PORT or 8787 (same rule as server/src/index.ts). */
+import { SERVER_HOST, parsePort } from '../server/src/address';
+
+/** Where Vite's dev proxy sends /api and /bundle: our server, using the server's own host and port rule. */
 export function proxyTarget(env: Record<string, string | undefined>): string {
-  const port = Number(env.PORT);
-  return `http://localhost:${Number.isInteger(port) && port > 0 ? port : 8787}`;
+  return `http://${SERVER_HOST}:${parsePort(env.PORT)}`;
 }

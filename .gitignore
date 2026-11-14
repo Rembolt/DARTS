@@ -21,3 +21,4 @@ dist/
 # Matterport Bundle and downloaded meshes
 server/bundle/
 server/cache/
+server/.bundle-tmp-*/

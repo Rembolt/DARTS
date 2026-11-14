@@ -14,16 +14,17 @@ and the self-hosted tour with the live camera pose. Run `npm run fetch-bundle` o
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
 
-## Architecture (planned, from the MVP design)
+## Architecture (from the MVP design)
 
-- **`app/`** (Vite + TypeScript, to be created): a page that embeds the Matterport viewer, plus three parts of our own.
+- **`app/`** (Vite + TypeScript, exists since step 1): a page that embeds the Matterport viewer, plus three parts of our own
+  (built in later steps).
   - **Sim worker:** a Web Worker that holds a copy of the property's mesh and a `three-mesh-bvh` ray index.
     It answers trace requests with numbers per sound source (direct loss, echo slots, echo time). It never touches audio.
   - **Audio engine:** a Web Audio graph on the page that applies those numbers to looping sound files.
   - **Blueprint view:** our own three.js canvas over the viewer, showing the mesh as lines and the traced sound paths.
-- **`server/`** (Node + Express, to be created): serves the self-hosted Matterport Bundle, proxies the mesh download
-  and keeps the GraphQL token off the browser.
-- **The contract between the parts** is `app/src/sim/types.ts` (design section 5.7). Write it first.
+- **`server/`** (Node + Express, exists since step 1): serves the self-hosted Matterport Bundle and the SDK key, on
+  `127.0.0.1` only. Later steps add the mesh download proxy, which keeps the GraphQL token off the browser.
+- **The contract between the parts** is `app/src/sim/types.ts` (design section 5.7). It exists; change it there first.
 - **Nothing heavy may run inside the Matterport viewer.** It is already slow. Rays go in the worker, audio on the audio thread.
 
 ## Commands

@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { loadServerConfig } from './api';
+import { checkBundle, loadServerConfig } from './api';
 
 const respond = (status: number, body: unknown) =>
   (async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+const raw = (status: number, text: string, type = 'text/plain') =>
+  (async () => new Response(text, { status, headers: { 'Content-Type': type } })) as typeof fetch;
+const down = (async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch;
+
+const UNREACHABLE = 'Server not reachable. Start it with: npm run dev';
 
 describe('loadServerConfig', () => {
   it('returns the config', async () => {
@@ -16,18 +21,24 @@ describe('loadServerConfig', () => {
   });
 
   it('reports an unreachable server', async () => {
-    const down = (async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch;
-    await expect(loadServerConfig(down)).rejects.toThrow('Server not reachable. Start it with: npm run dev');
+    await expect(loadServerConfig(down)).rejects.toThrow(UNREACHABLE);
   });
 
-  it('reports a non-JSON answer, as when the proxy target is down', async () => {
-    const html = (async () => new Response('<html>', { status: 502 })) as typeof fetch;
-    await expect(loadServerConfig(html)).rejects.toThrow('Server not reachable. Start it with: npm run dev');
+  it("reports an unreachable server behind Vite's proxy (empty-body 500)", async () => {
+    await expect(loadServerConfig(raw(500, ''))).rejects.toThrow(UNREACHABLE);
+  });
+
+  it('reports an unreachable server behind a gateway (502)', async () => {
+    await expect(loadServerConfig(raw(502, '<html>', 'text/html'))).rejects.toThrow(UNREACHABLE);
+  });
+
+  it('reports the status when a running server answers 500 with a non-JSON body', async () => {
+    await expect(loadServerConfig(raw(500, '<html>Internal Server Error</html>', 'text/html')))
+      .rejects.toThrow('Server error: HTTP 500');
   });
 
   it('reports the status when a running server answers with a non-JSON error', async () => {
-    const notFound = (async () => new Response('<html>Cannot GET</html>', { status: 404 })) as typeof fetch;
-    await expect(loadServerConfig(notFound)).rejects.toThrow('Server error: HTTP 404');
+    await expect(loadServerConfig(raw(404, '<html>Cannot GET</html>', 'text/html'))).rejects.toThrow('Server error: HTTP 404');
   });
 
   it('reports the status when an error answer has no message', async () => {
@@ -41,5 +52,25 @@ describe('loadServerConfig', () => {
   it('rejects a config without a key', async () => {
     await expect(loadServerConfig(respond(200, { modelId: 'Ki9YdfpNKum' })))
       .rejects.toThrow('Server sent an incomplete config');
+  });
+});
+
+describe('checkBundle', () => {
+  it('passes when the viewer page is there', async () => {
+    await expect(checkBundle(raw(200, '<html>', 'text/html'))).resolves.toBeUndefined();
+  });
+
+  it("shows the server's hint when the Bundle is missing", async () => {
+    await expect(checkBundle(raw(503, 'Matterport Bundle missing. Run: npm run fetch-bundle')))
+      .rejects.toThrow('Matterport Bundle missing. Run: npm run fetch-bundle');
+  });
+
+  it('reports an unreachable server', async () => {
+    await expect(checkBundle(down)).rejects.toThrow(UNREACHABLE);
+    await expect(checkBundle(raw(500, ''))).rejects.toThrow(UNREACHABLE);
+  });
+
+  it('reports the status for other failures', async () => {
+    await expect(checkBundle(raw(404, '<html>', 'text/html'))).rejects.toThrow('Viewer page not available: HTTP 404');
   });
 });

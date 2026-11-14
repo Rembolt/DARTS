@@ -56,3 +56,17 @@ it('picks up a bundle fetched after the server started', async () => {
   expect(res.status).toBe(200);
   expect(res.text).toBe('<html>late</html>');
 });
+
+it('answers 404, not "missing", for an unknown file in a present bundle', async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'showcase.html'), '<html>viewer</html>');
+  const res = await request(createApp({}, { bundleDir: dir })).get('/bundle/no-such-asset.js');
+  expect(res.status).toBe(404);
+});
+
+it('answers HEAD requests, which the app uses to check the bundle', async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'showcase.html'), '<html>viewer</html>');
+  expect((await request(createApp({}, { bundleDir: dir })).head('/bundle/showcase.html')).status).toBe(200);
+  expect((await request(createApp({}, { bundleDir: join(dir, 'nope') })).head('/bundle/showcase.html')).status).toBe(503);
+});
