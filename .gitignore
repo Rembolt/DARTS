@@ -13,3 +13,11 @@ __pycache__/
 # Audio files stay local (the song is a commercial recording)
 *.mp3
 *.wav
+
+# Build and dependencies
+node_modules/
+dist/
+
+# Matterport Bundle and downloaded meshes
+server/bundle/
+server/cache/
