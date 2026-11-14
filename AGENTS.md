@@ -9,7 +9,7 @@ CoStar data supplies the property context and Vexcel the exterior/aerial context
 
 ## Current state
 
-No application code exists yet. The repo holds docs, the data kit and one sample script.
+Build step 1 of the MVP design is done: the app and server scaffold, the hardcoded config and the worker types.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
 
@@ -29,7 +29,10 @@ and its section 4 for every hardcoded value. It supersedes anything in older doc
 
 - **Vexcel sample:** `pip install requests shapely pillow`, set `VEXCEL_API_KEY` in the same terminal, then `python scripts/vexcel_quickstart.py`.
   Output goes to `scripts/output/` (git-ignored).
-- **App and server:** none yet. Add the dev, build and test commands here when build step 1 scaffolds them.
+- **Install:** `npm install` at the repo root (npm workspaces: `app/` and `server/`).
+- **Run:** `npm run dev` starts the server on `http://localhost:8787` and the page on `http://localhost:5173`. Set `PORT` to move the server.
+- **Test:** `npm test` runs both. One workspace: `npm run test -w app`. One file: `npm run test -w app -- src/config.test.ts`. One test: add `-t "name of the test"`.
+- **Types:** `npm run typecheck`.
 
 ## Facts verified by test (Nov 14)
 
