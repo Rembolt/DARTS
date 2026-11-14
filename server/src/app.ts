@@ -18,10 +18,10 @@ export function createApp(
   const { bundleDir } = options;
 
   // Checked per request, so fetching the Bundle while the server runs needs no restart.
-  const serveBundle = bundleDir ? express.static(bundleDir) : undefined;
+  const bundle = bundleDir ? { dir: bundleDir, serve: express.static(bundleDir) } : undefined;
   app.use('/bundle', (req, res, next) => {
-    if (serveBundle && bundleDir && existsSync(join(bundleDir, 'showcase.html'))) {
-      serveBundle(req, res, next);
+    if (bundle && existsSync(join(bundle.dir, 'showcase.html'))) {
+      bundle.serve(req, res, next);
       return;
     }
     res.status(503).type('text/plain').send('Matterport Bundle missing. Run: npm run fetch-bundle');

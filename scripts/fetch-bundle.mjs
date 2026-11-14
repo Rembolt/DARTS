@@ -21,7 +21,13 @@ if (!force && existsSync(versionFile) && readFileSync(versionFile, 'utf8').inclu
   process.exit(0);
 }
 
-const res = await fetch(BUNDLE_URL);
+let res;
+try {
+  res = await fetch(BUNDLE_URL);
+} catch (err) {
+  console.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
 if (!res.ok) {
   console.error(`Download failed: HTTP ${res.status}`);
   process.exit(1);

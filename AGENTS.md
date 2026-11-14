@@ -9,7 +9,8 @@ CoStar data supplies the property context and Vexcel the exterior/aerial context
 
 ## Current state
 
-Build step 1 of the MVP design is done: the app and server scaffold, the hardcoded config and the worker types.
+Build steps 1 and 2 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
+and the self-hosted tour with the live camera pose. Run `npm run fetch-bundle` once before `npm run dev`.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
 
