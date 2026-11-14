@@ -6,7 +6,9 @@ const poseLine = document.getElementById('pose')!;
 const iframe = document.getElementById('viewer') as HTMLIFrameElement;
 
 function showError(err: unknown): void {
-  status.textContent = err instanceof Error ? err.message : String(err);
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown error';
+  status.textContent = message;
+  status.title = message;
 }
 
 async function start(): Promise<void> {
@@ -26,4 +28,4 @@ async function start(): Promise<void> {
   });
 }
 
-void start();
+start().catch(showError);

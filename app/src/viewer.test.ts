@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { viewerUrl, withTimeout, formatPose } from './viewer';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { viewerUrl, withTimeout, formatPose, TimeoutError, startFailureMessage } from './viewer';
 
 describe('viewerUrl', () => {
   it('builds the Bundle address', () => {
@@ -13,6 +13,10 @@ describe('viewerUrl', () => {
 });
 
 describe('withTimeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('passes the result through when it arrives in time', async () => {
     await expect(withTimeout(Promise.resolve(7), 1000, 'too slow')).resolves.toBe(7);
   });
@@ -22,7 +26,40 @@ describe('withTimeout', () => {
     const p = withTimeout(new Promise(() => {}), 60_000, 'Viewer did not start: timed out after 60 s');
     vi.advanceTimersByTime(60_000);
     await expect(p).rejects.toThrow('Viewer did not start: timed out after 60 s');
-    vi.useRealTimers();
+  });
+
+  it('rejects with a TimeoutError', async () => {
+    vi.useFakeTimers();
+    const p = withTimeout(new Promise(() => {}), 10, 'slow');
+    const caught = p.catch((e: unknown) => e);
+    vi.advanceTimersByTime(10);
+    expect(await caught).toBeInstanceOf(TimeoutError);
+  });
+});
+
+describe('startFailureMessage', () => {
+  it('keeps the timeout text as it is', () => {
+    expect(startFailureMessage(new TimeoutError('Viewer did not start: timed out after 60 s')))
+      .toBe('Viewer did not start: timed out after 60 s');
+  });
+
+  it('does not treat a lookalike message as a timeout', () => {
+    expect(startFailureMessage(new Error('Viewer did not start: timed out after 60 s')))
+      .toBe('Viewer did not start: Viewer did not start: timed out after 60 s');
+  });
+
+  it('prefixes the message of other errors', () => {
+    expect(startFailureMessage(new Error('the viewer page did not load the SDK')))
+      .toBe('Viewer did not start: the viewer page did not load the SDK');
+  });
+
+  it('reads primitives as text', () => {
+    expect(startFailureMessage('boom')).toBe('Viewer did not start: boom');
+  });
+
+  it('never prints [object Object]', () => {
+    expect(startFailureMessage({ code: 1 })).toBe('Viewer did not start: unknown error');
+    expect(startFailureMessage(null)).toBe('Viewer did not start: unknown error');
   });
 });
 

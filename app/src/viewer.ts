@@ -24,10 +24,18 @@ export function viewerUrl(config: ServerConfig): string {
   return `/bundle/showcase.html?m=${encodeURIComponent(config.modelId)}&applicationKey=${encodeURIComponent(config.sdkKey)}&play=1&qs=1`;
 }
 
-/** Reject with `message` if `promise` has not settled after `ms`. */
+/** Thrown by `withTimeout` when time runs out. */
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+/** Reject with a `TimeoutError` carrying `message` if `promise` has not settled after `ms`. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
+    const timer = setTimeout(() => reject(new TimeoutError(message)), ms);
     promise.then(
       value => {
         clearTimeout(timer);
@@ -52,13 +60,21 @@ async function connect(iframe: HTMLIFrameElement): Promise<MpSdk> {
   return sdk;
 }
 
+/** The text to show when the viewer fails to start. Never `[object Object]`. */
+export function startFailureMessage(err: unknown): string {
+  if (err instanceof TimeoutError) return err.message;
+  let detail = 'unknown error';
+  if (err instanceof Error) detail = err.message;
+  else if (typeof err === 'string' || typeof err === 'number' || typeof err === 'boolean') detail = String(err);
+  return `Viewer did not start: ${detail}`;
+}
+
 /** Connect to the SDK inside the viewer iframe and wait until the tour is playing. Rejects with a message ready to show. */
 export async function connectViewer(iframe: HTMLIFrameElement): Promise<MpSdk> {
   try {
     return await withTimeout(connect(iframe), START_TIMEOUT_MS, START_TIMEOUT_MESSAGE);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(message === START_TIMEOUT_MESSAGE ? message : `Viewer did not start: ${message}`);
+    throw new Error(startFailureMessage(err));
   }
 }
 
