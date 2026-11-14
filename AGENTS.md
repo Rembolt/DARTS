@@ -30,6 +30,7 @@ and its section 4 for every hardcoded value. It supersedes anything in older doc
 - **Vexcel sample:** `pip install requests shapely pillow`, set `VEXCEL_API_KEY` in the same terminal, then `python scripts/vexcel_quickstart.py`.
   Output goes to `scripts/output/` (git-ignored).
 - **Install:** `npm install` at the repo root (npm workspaces: `app/` and `server/`).
+- **Viewer files:** `npm run fetch-bundle` downloads the Matterport Bundle into `server/bundle/` (git-ignored). Run once after cloning.
 - **Run:** `npm run dev` starts the server on `http://localhost:8787` and the page on `http://localhost:5173`. Set `PORT` to move the server.
 - **Test:** `npm test` runs both. One workspace: `npm run test -w app`. One file: `npm run test -w app -- src/config.test.ts`. One test: add `-t "name of the test"`.
 - **Types:** `npm run typecheck`.

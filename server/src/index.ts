@@ -7,7 +7,7 @@ const env = loadEnv(resolve(import.meta.dirname, '../../.env'));
 const port = Number(process.env.PORT) || 8787;
 
 try {
-  await listen(createApp(env), port);
+  await listen(createApp(env, { bundleDir: resolve(import.meta.dirname, '../bundle') }), port);
   console.log(`server on http://localhost:${port}`);
 } catch (err) {
   if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {

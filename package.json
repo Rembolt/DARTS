@@ -1,17 +1,21 @@
 {
   "name": "mei-princeton",
   "private": true,
-  "engines": { "node": ">=20.11" },
+  "engines": {
+    "node": ">=20.11"
+  },
   "workspaces": [
     "app",
     "server"
   ],
   "scripts": {
     "dev": "concurrently -n server,app \"npm run dev -w server\" \"npm run dev -w app\"",
+    "fetch-bundle": "node scripts/fetch-bundle.mjs",
     "test": "npm run test -w server && npm run test -w app",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w app"
   },
   "devDependencies": {
-    "concurrently": "^10.0.7"
+    "concurrently": "^10.0.7",
+    "extract-zip": "^2.0.1"
   }
 }
