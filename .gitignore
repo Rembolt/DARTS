@@ -9,3 +9,7 @@ costar-kit/records/
 # Generated output
 scripts/output/
 __pycache__/
+
+# Audio files stay local (the song is a commercial recording)
+*.mp3
+*.wav

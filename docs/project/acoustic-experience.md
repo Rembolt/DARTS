@@ -5,58 +5,57 @@ That soundscape includes outside noise through windows, speakers placed in rooms
 They change the space by talking to an agent ("close the window", "insulate this wall") and hear the difference.
 Every number is an **estimate** (educated simulation), not a certified acoustic survey. Say so in the UI and pitch.
 
-**Status (Nov 14):** the MVP scope and stack in section 1 are decided. Section 2 lists the tested facts they rest on.
-Section 3 is the final product, which comes after the MVP. The design document comes next.
+**Status (Nov 14):** the MVP is decided and specified in [mvp-design.md](mvp-design.md), which is the build spec.
+Section 1 here is a summary of it. Section 2 lists the tested facts it rests on. Section 3 is the final product, which comes after the MVP.
 
-## 1. MVP (decided)
+## 1. MVP (summary)
+
+The full design, with every value and step, is in [mvp-design.md](mvp-design.md). If the two disagree, the design wins.
 
 ### What it is
-A web app with one property loaded:
-- **Click to spawn a speaker.** Clicking a surface in the tour places a speaker there, playing a song.
-- **Outdoor sound on every window.** One simplified outdoor loop plays from the centre of each window.
-- **Detailed headphone audio.** Stereo positioning, muffling through walls, distinct early echoes and a reverb tail.
-- **"Wow" graphics.** The sound's bounce paths are drawn as lines, in the tour and in a black-and-white wireframe "X-ray" view.
+A web app with one property loaded (model `Ki9YdfpNKum`, 9117 Richland Drive, Houston):
+- **The tour.** The Matterport viewer embedded in our page.
+- **One indoor source.** A song playing from a fixed point inside.
+- **One outdoor source.** A highway loop playing from a fixed point 25 m outside.
+- **Headphone audio through the property's acoustics.** Direction, fading with distance, dull sound behind walls, early echoes and a reverb tail that change from room to room.
+- **A blueprint view.** A button outside the viewer switches to the simulation's world: the mesh as blueprint lines on a see-through white background, with the sound paths drawn.
 
-Not in the MVP: the AI agent, property search, materials and furniture what-ifs, Vexcel outdoor noise (see section 3).
+Everything is hardcoded in one config file: the property, the materials, both sources and the simulation settings.
+Later versions change those values from settings or an agent, without changing the simulation.
 
-### Technique: trace what you can see and hear distinctly, estimate the rest
-Everything is computed from the listener's point of view only, as games do.
+Not in the MVP: placing or moving sources, changing materials, windows and doors, the AI agent, property search, CoStar and Vexcel data, numbers on screen.
 
-| Part of the sound | Method | Cost |
-|---|---|---|
-| Direct sound | One ray from speaker to listener. Each wall it crosses makes the sound quieter and more muffled. | Trivial |
-| Early bounces (the drawn lines) | About 1,000–2,000 rays from the listener, 3–4 bounces each. Keep the 6–12 strongest that reach the speaker. Each becomes a delayed, positioned echo and a drawn line. | A few ms in the worker |
-| Reverb tail | Not traced. The same rays estimate the room's size and absorption, which sets the echo time of a generated reverb. | Almost free |
-| Outdoor sound | One looping source per window (window positions from PI), through the same pipeline. | Same as a speaker |
+### How the sound is computed
+It is the hybrid model that research engines and game engines share. Everything is traced from the listener's position.
 
-Cone tracing was considered and dropped: harder to build than rays, and it looks no better.
+| Part of the sound | Method |
+|---|---|
+| Direct sound | 9 rays from the listener to the source. Each wall crossed removes that material's blocking, per frequency band. Sound passes through walls weakened, never cut off |
+| Early reflections | 2,000 rays from the listener, 4 bounces each. Every bounce point is connected to each source, and that connection may cut through up to 2 walls. Each surface absorbs part of the ray per band |
+| Echo slots | Contributions in the first 80 ms are grouped into 12 fixed directions per source. Each slot becomes one delayed, positioned echo |
+| Late reverb | A deeper trace (60 bounces) when the listener enters a room gives the echo time from the energy decay. A generated reverb plays it |
+| Headphones | Head-related filters (HRTF) place the direct sound and every echo |
+
+Materials have absorption, scattering and blocking in three bands (low, mid, high). The MVP assigns one of three defaults by which way a surface faces: wall, floor or ceiling.
+The material numbers are unvalidated starting values.
 
 ### Stack
 | Piece | Choice |
 |---|---|
 | Web app | Vite + TypeScript |
-| Viewer | Matterport **Bundle SDK** (self-hosted Showcase). Click-to-spawn uses its pointer hit (`Pointer.intersection`). |
-| Backend (small) | Fetches the mesh and PI data with GraphQL so the token stays server-side. Mesh links expire, so fetch at load. |
-| Geometry for simulation | The **defurnished OBJ mesh** (about 116,000 triangles for a house), converted once from Model coordinates (Z-up) to SDK coordinates (Y-up) |
+| Viewer | Matterport **Bundle SDK**, served by our server and embedded in an iframe |
+| Server | Node + Express: serves the Bundle and the audio files, downloads and caches the mesh, keeps the GraphQL token off the browser |
+| Geometry | The **defurnished OBJ mesh** (116,539 triangles for the demo house), converted once from Z-up to Y-up |
 | Simulation | Web Worker + three.js + `three-mesh-bvh` (an index that makes ray hits fast) |
-| Audio | Plain Web Audio API: `PannerNode` (HRTF) for positioning, `BiquadFilterNode` for muffling, `DelayNode` for bounces, `ConvolverNode` with a generated impulse response for reverb |
-| Graphics | three.js lines as one draw call, shown inside the tour (Bundle scene) and in our own X-ray canvas |
-| Dropped | Babylon (three.js covers everything) and Resonance Audio (the ray results replace its box-room model) |
+| Audio | Web Audio API only |
+| Blueprint view | three.js on our own canvas, on top of the viewer with the same camera |
+| Dropped | Babylon, Resonance Audio, drawing paths inside the tour, click-to-place speakers, one source per window |
 
 ### Keeping it smooth (the viewer is already slow)
-- **Simulation runs off the viewer.** Rays are traced against our own copy of the mesh in a Web Worker. Showcase is never asked to do it.
-- **Recompute only on events:** a speaker spawns, a window or door changes, or the listener arrives at a new scan point. Head turns are handled by Web Audio.
+- **Simulation runs off the viewer,** in a Web Worker against our own copy of the mesh.
+- **A trace runs only when the listener has moved more than 0.25 m,** one at a time. Head turns are handled by Web Audio.
 - **Audio runs on the audio thread,** so sound stays smooth even if graphics stutter.
-- **All ray lines are one line object,** which is negligible next to what Showcase draws.
-- **Fallback:** the X-ray view is our own canvas and stays fast. If Showcase is too slow at demo time, the X-ray view carries the visuals and the tour becomes a side panel.
-- **Open lead:** the tested model reported Gaussian splats present. Ask the Matterport engineers whether that layer can be turned off.
-
-### Build order (each step leaves a demoable app)
-1. Bundle page with click-to-spawn speaker and positioned headphone audio, no simulation.
-2. Mesh in a worker, with direct-sound muffling through walls.
-3. Bounce rays, with lines drawn in the X-ray view and then in the tour.
-4. Reverb from the ray statistics.
-5. Window sources with an outdoor loop.
+- **The blueprint view redraws only on change** and isn't drawn while hidden.
 
 ## 2. Tested facts (Nov 14)
 
@@ -71,6 +70,8 @@ Cone tracing was considered and dropped: harder to build than rays, and it looks
 | Panoramas | Readable. The 4K pack is locked, so use 2K. Links expire. |
 | Bundle download | `https://static.matterport.com/showcase-sdk/bundle/<version>/showcase-bundle.zip`; version `26.10.4_webgl-1728-g1cd7e0997a` worked. |
 | Examples | https://github.com/matterport/showcase-sdk-examples has a WASD free-walk camera, sensor zones and the intersection inspector. |
+| Simulation speed | Emulated on the demo mesh in Node, unoptimised. Load: 182 ms (parse 111, ray index 59, material tags 8). Trace with 3 sources and 4 bounces: 160 ms at 1,500 rays, 214 ms at 2,000, 324 ms at 3,000. Deep reverb trace: 706 ms. |
+| Reverb estimate | A formula from mean free path gave 1.15 s where the traced decay gave 0.80 s. The MVP uses the traced decay. |
 
 Unknowns:
 - The defurnished mesh tags triangles with type codes (`type002`, `type003`, `type007`…). Not decoded.

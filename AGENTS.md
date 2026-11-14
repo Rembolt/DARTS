@@ -1,18 +1,60 @@
 # AGENTS.md — start here
 
 HackPrinceton Fall '26, CoStar track ("Inside and Out: AI for the Built World").
-The project is an **acoustic renderer for real properties**: it rebuilds rooms from Matterport
-Property Intelligence geometry, simulates how sound carries through them, and lets a user hear any
-point in the 3D tour. CoStar data supplies the property context and Vexcel the exterior/aerial context.
-Full pitch, judging criteria, data-access facts and open questions: [docs/project/proposal.md](docs/project/proposal.md).
+The project is an **acoustic renderer for real properties**: it traces sound rays through a property's
+Matterport mesh, and lets a user hear any point in the 3D tour through headphones.
+CoStar data supplies the property context and Vexcel the exterior/aerial context (both after the MVP).
 
 **Hard deadline:** Devpost submission at 8:00 AM, Sunday Nov 15, 2026. Demo ≤ 2 min.
+
+## Current state
+
+No application code exists yet. The repo holds docs, the data kit and one sample script.
+[docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
+and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
+
+## Architecture (planned, from the MVP design)
+
+- **`app/`** (Vite + TypeScript, to be created): a page that embeds the Matterport viewer, plus three parts of our own.
+  - **Sim worker:** a Web Worker that holds a copy of the property's mesh and a `three-mesh-bvh` ray index.
+    It answers trace requests with numbers per sound source (direct loss, echo slots, echo time). It never touches audio.
+  - **Audio engine:** a Web Audio graph on the page that applies those numbers to looping sound files.
+  - **Blueprint view:** our own three.js canvas over the viewer, showing the mesh as lines and the traced sound paths.
+- **`server/`** (Node + Express, to be created): serves the self-hosted Matterport Bundle, proxies the mesh download
+  and keeps the GraphQL token off the browser.
+- **The contract between the parts** is `app/src/sim/types.ts` (design section 5.7). Write it first.
+- **Nothing heavy may run inside the Matterport viewer.** It is already slow. Rays go in the worker, audio on the audio thread.
+
+## Commands
+
+- **Vexcel sample:** `pip install requests shapely pillow`, set `VEXCEL_API_KEY` in the same terminal, then `python scripts/vexcel_quickstart.py`.
+  Output goes to `scripts/output/` (git-ignored).
+- **App and server:** none yet. Add the dev, build and test commands here when build step 1 scaffolds them.
+
+## Facts verified by test (Nov 14)
+
+These are not in the vendor docs and cost time to find out.
+
+- **The real mesh is downloadable.** `model(id) { assets { meshes { format resolution status url validUntil } } }` works with the read-only token.
+  Use the entry with `resolution: "50k"`: one defurnished OBJ file. The `"500k"` entry is served in pieces. Links expire, so cache the file, not the link.
+- **Mesh coordinates are Z-up;** the viewer is Y-up. Convert with `(x, y, z) → (x, z, −y)`.
+- **The Bundle works with the hackathon SDK key on `localhost`,** on any port. Download:
+  `https://static.matterport.com/showcase-sdk/bundle/26.10.4_webgl-1728-g1cd7e0997a/showcase-bundle.zip`.
+- **Property Intelligence openings include `window`** (also `doorway`, `opening`, `divider`). Room height is missing on about a third of rooms.
+- **GraphQL schema introspection is blocked** (`BadFaithIntrospection`). Use the docs mirror or the playground at
+  `https://beta-app.matterport.com/2026-princeton-hackathon/graphiql` for field names.
+- **Tested model:** `Ki9YdfpNKum` (9117 Richland Drive, Houston). Mesh, Bundle and ray tracing were all run on it.
+- **Port 8080 may already be in use** by a teammate's test page. Pick another port for throwaway servers.
+
+More results, including timings, are in [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) section 2 and the design's section 9.
 
 ## Folder map
 
 | Path | What it is | Read when |
 |---|---|---|
-| [docs/project/proposal.md](docs/project/proposal.md) | Project idea, judging-criteria mapping, credentials and API facts gathered on-site, open questions | Always read first |
+| [docs/project/mvp-design.md](docs/project/mvp-design.md) | The MVP build spec: scope, stack, hardcoded values, the rendering pipeline step by step, build steps | Before writing any code |
+| [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) | The product idea, a summary of the MVP, tested facts, and the final goal after the MVP | Product context, what comes after the MVP |
+| [docs/project/proposal.md](docs/project/proposal.md) | The original short proposal and data-access facts | Endpoint and auth facts |
 | [costar-kit/](costar-kit/) | The CoStar data kit: CSV starter lists, `data/*.jsonl` (≈400 MB), field docs, real-estate concepts, schemas | Working with property, listing, tenant or sale data |
 | [docs/matterport/](docs/matterport/) | Matterport docs: condensed notes plus the full official-site mirror | Room geometry, GraphQL Model API, Showcase/Embed SDK |
 | [docs/vexcel/](docs/vexcel/) | Vexcel API 2.0 docs: endpoint reference, OpenAPI spec, hackathon tutorial PDF | Aerial imagery, parcels, structures, elevation |
@@ -44,5 +86,8 @@ Full pitch, judging criteria, data-access facts and open questions: [docs/projec
   field names, types and examples.
 - **Matterport is read-only** for the hackathon: GraphQL mutations (purchases, MatterPak ordering) fail.
 - **CoStar data is licensed for the hackathon only.** `costar-kit/data/` is git-ignored, so keep it out of the public repo.
+  The two CSV starter lists are tracked; check with CoStar before the repo goes public.
+- **Don't commit the Matterport Bundle or downloaded meshes.** Git-ignore `server/bundle/` and `server/cache/`.
+- **Simulation numbers are estimates.** Material values in the design are unvalidated defaults. Don't present results as measured.
 - `docs/hackathon/originals/` and `docs/matterport/official-html-snapshot/` are raw source copies. Ignore them
   unless the cleaned versions are missing something.
