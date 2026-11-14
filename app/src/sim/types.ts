@@ -1,0 +1,56 @@
+// Messages between the page and the simulation worker (mvp-design.md 5.7).
+// Everything is in viewer coordinates (Y up), in metres and seconds.
+
+export type Vec3 = [number, number, number];
+export type Bands = [number, number, number]; // low, mid, high
+
+export type Material = { absorption: Bands; scattering: number; blockingDb: Bands };
+
+export type SimConfig = {
+  materials: { wall: Material; floor: Material; ceiling: Material };
+  furnishing: number;
+  transmissionScale: number;
+  raysPerTrace: number;
+  bounces: number;
+  maxLegWalls: number;
+  scatteringFloor: number;
+  occlusionRays: number;
+  occlusionRadius: number; // metres
+  wallMergeDistance: number; // metres
+  earlyWindow: number; // seconds
+  slotDirections: Vec3[];
+  maxDrawnPaths: number;
+  reverbRays: number;
+  reverbBounces: number;
+  blueprintEdgeAngle: number; // degrees
+  speedOfSound: number; // metres per second
+};
+
+export type ToWorker =
+  | { type: 'load'; obj: ArrayBuffer; config: SimConfig }
+  | { type: 'trace'; id: number; listener: Vec3; sources: { id: string; position: Vec3 }[] }
+  | { type: 'reverb'; roomId: string; listener: Vec3 };
+
+export type FromWorker =
+  | { type: 'ready'; lines: Float32Array; boundsMin: Vec3; boundsMax: Vec3; loadMs: number }
+  | {
+      type: 'trace';
+      id: number;
+      listener: Vec3;
+      ms: number;
+      echoTimeEstimate: Bands;
+      sources: SourceResult[];
+      paths: Float32Array; // line segments as pairs of points
+      pathSource: Uint8Array; // which source each segment belongs to
+    }
+  | { type: 'reverb'; roomId: string; echoTime: Bands; ms: number }
+  | { type: 'error'; message: string };
+
+export type SourceResult = {
+  id: string;
+  distance: number; // metres
+  direct: Bands; // strength left after walls, 0..1
+  walls: number; // walls crossed by the centre ray
+  slots: { energy: Bands; delay: number }[]; // 12 entries, delay in seconds after the direct sound
+  lateEnergy: Bands;
+};
