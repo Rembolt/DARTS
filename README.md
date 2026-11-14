@@ -2,4 +2,4 @@
 
 HackPrinceton Fall '26, CoStar track. Acoustic renderer for real properties.
 
-See [AGENTS.md](AGENTS.md) for the folder map. Keys go in `.env` (git-ignored).
+See [AGENTS.md](AGENTS.md) for the folder map.
