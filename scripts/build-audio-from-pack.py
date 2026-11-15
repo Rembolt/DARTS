@@ -1,6 +1,6 @@
 """Turn picked recordings from the CLR Music city-ambience pack into the tour's outside-sound loops.
 
-Usage: python scripts/build-audio-from-pack.py <folder with the unzipped pack>
+Usage: python scripts/build-audio-from-pack.py <the audios folder: the unzipped pack, files renamed as in its OPTIONS.md>
 Needs: pip install numpy scipy soundfile. Writes app/public/audio/<name>.ogg: about 30 s, mono, looped by repeating the
 short source with equal-power crossfades, and with its end blended into its start so it repeats without a click.
 Every pick is CC0 per the pack's LICENSES.txt (rows are in app/public/audio/CREDITS.md). `train` stays stereo (a one-shot).
@@ -12,13 +12,13 @@ import soundfile as sf
 
 PICKS = {
     # output name: (source file in the pack, mono?)
-    'residential_ambience': ('cm2-150777bb391e4d107b30__178022.wav', True),
-    'city_ambience': ('cm3-2bf61daba71d72195638__city-street-10-second-excerpt.wav', True),
-    'commercial_ambience': ('cm2-7017e3ea7de72018f97c__139981.wav', True),
-    'industrial_ambience': ('cm2-2037a4b9825c9e9e9434__sfx100v2-loop-construction-site.ogg', True),
-    'nature_ambience': ('cm3-026810155e843a8974ce__tokyo-park-at-dusk-10-second-excerpt.wav', True),
-    'road': ('cm2-e20f1110657b69dccc15__sfx100v2-loop-highway.ogg', True),
-    'train': ('cm3-57e4d20b9f40e8e3946d__long-train-ride-10-second-excerpt.wav', False),
+    'residential_ambience': ('residential__quiet-north-street__CC0.wav', True),
+    'city_ambience': ('city__city-street__CC0.wav', True),
+    'commercial_ambience': ('commercial__market-environment__CC0.wav', True),
+    'industrial_ambience': ('industrial__loop-construction-site__CC0.ogg', True),
+    'nature_ambience': ('nature__tokyo-park-at-dusk__CC0.wav', True),
+    'road': ('road__loop-highway__CC0.ogg', True),
+    'train': ('train__long-train-ride__CC0.wav', False),
 }
 TARGET_S = 30.0
 FADE_S = 0.5
