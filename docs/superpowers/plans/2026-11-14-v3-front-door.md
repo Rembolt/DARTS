@@ -38,6 +38,8 @@ Wave 1   Lane A  Search          server/src/search/**, scripts/build-index.mjs
 Wave 2   Lane Z  Integration ── one agent, after all six are merged
 ```
 
+The [V2 plan](2026-11-14-v2-settings-jev.md) runs two of its lanes (scene store, sim worker) beside Wave 1 and the rest after Lane Z's merge check. Its "Run order across both plans" section is the schedule for both.
+
 **Rules for lanes**
 - A lane edits only the paths listed for it (plus its own tests). If it needs a change elsewhere, it stops and reports; it does not edit another lane's file or the contract.
 - Lane 0 creates every lane's module as a **stub with its final exported signature**, and wires them all in `server/src/index.ts`. A lane fills in its stub. Nobody touches `index.ts`, `app.ts`, `main.ts` or the contract after Lane 0 except Lane Z.
@@ -356,7 +358,37 @@ Spec 11 step 1: this settles the untested Bundle question. No code.
 
 - [ ] **Step 1:** With `npm run dev` running, open `/?m=1C9UFFhU9C3`, `/?m=zWUJEpkRBi4`, `/?m=vrYE2cTTD9A` (homes) and `/?m=UJev7JJKZ6J`, `/?m=zt8JiL9gipg` (commercial). For each, note: does the tour open, does the sim line report `ready` and its triangle count, does the blueprint (B) sit on the walls.
 - [ ] **Step 2:** Add the results to AGENTS.md under "Facts verified by test". Commit.
-- [ ] **Step 3:** **If no other model opens, stop and tell the user**: F4 ("Listen inside" for any property) is not possible as designed, and Lanes E and F need a decision before they start. Otherwise merge Lane 0 to main and start Wave 1.
+- [ ] **Step 3:** **If no other model opens, stop and tell the user**: F4 ("Listen inside" for any property) is not possible as designed, and Lanes E and F need a decision before they start. Otherwise finish Task 0.6, then merge Lane 0 to main and start Wave 1.
+
+### Task 0.6: The shared material library
+
+**Files:**
+- Create: `server/src/shared/materials.ts` (no imports: the app imports it too)
+- Test: `server/test/materials.test.ts`
+
+One copy of the material values and the room-type table, used by the quick summary (Lane B) and by the V2 scene ([V2 plan](2026-11-14-v2-settings-jev.md)).
+
+**Interfaces — Produces:**
+```ts
+export type Material = { absorption: [number, number, number]; scattering: number; blockingDb: [number, number, number] };
+export const MATERIALS = { drywall: …, insulated_drywall: …, wood_floor: …, tile: …, concrete: …, carpet: …, wood_panel: …, acoustic_panel: …,
+  glass: …, door: …, vinyl: …, wall_tile: …, plaster: …, brick_veneer: …, siding_wall: … } as const satisfies Record<string, Material>;   // v2-design.md 4.1, every row, values verbatim, in that order
+export type MaterialName = keyof typeof MATERIALS;
+export const FURNISHING = { empty: 0, sparse: 0.08, furnished: 0.15, studio: 0.30 } as const;
+export type RoomType = 'kitchen' | 'dining' | 'living' | 'bedroom' | 'bathroom' | 'laundry' | 'hallway' | 'office' | 'closet' | 'garage' | 'other';
+export type Mix = { material: MaterialName; weight: number }[];
+export const ROOM_TABLE: Record<RoomType, { floor: Mix; wall: Mix; ceiling: Mix; furnishing: keyof typeof FURNISHING }>;   // v2-design.md 4.4 table, blends as written (living floor: wood_floor 0.7, carpet 0.3; bathroom wall: drywall 0.6, wall_tile 0.4)
+export function roomType(name: string): RoomType;   // case-insensitive: kitchen; dining; living|family; bed; bath; laundry|utility; hall|entry|stair|foyer; office|study; closet; garage; else other
+```
+
+- [ ] **Step 1: Write the failing test**
+```ts
+it('has the 15 library rows with the design values', () => { expect(Object.keys(MATERIALS)).toHaveLength(15); expect(MATERIALS.carpet).toEqual({ absorption: [0.08, 0.35, 0.60], scattering: 0.30, blockingDb: [35, 45, 50] }); expect(MATERIALS.glass.blockingDb).toEqual([18, 25, 28]); });
+it('names room types', () => { expect(roomType('Primary Bedroom')).toBe('bedroom'); expect(roomType('Family Room')).toBe('living'); expect(roomType('Entry')).toBe('hallway'); expect(roomType('Void')).toBe('other'); });
+it('has mixes that sum to 1 and name library materials', ...)   // every ROOM_TABLE mix
+```
+- [ ] **Step 2–4:** Run (FAIL), implement, run with typecheck (PASS).
+- [ ] **Step 5:** Commit: `feat: shared material library and room-type table`.
 
 ---
 
@@ -444,8 +476,10 @@ Owns `server/src/quick/**`, `server/test/quick*.test.ts`.
 ```ts
 export type PiRoom = {
   id: string; label: string; classes: { label: string; confidence: number }[]; floorId: string;
-  area: number; width: number; depth: number; height: number;                       // metres; 0 = missing
-  edges: { type: 'wall' | 'invisible'; a: [number, number]; b: [number, number]; openings: { type: string; width: number; height: number }[] }[];
+  keywords: string[]; area: number; width: number; depth: number; height: number;   // metres; 0 = missing
+  lowerElevation: number | null;                                                    // the room's floor height in the PI frame
+  edges: { type: 'wall' | 'invisible'; a: [number, number]; b: [number, number]; thickness: number;
+           openings: { id: string; type: string; width: number; height: number; relativeCenter: number; lowerElevation: number | null }[] }[];
 };
 export type PiModel = { modelId: string; name: string | null; active: boolean; isPublic: boolean; hasMesh: boolean; rooms: PiRoom[] };
 export type PiSource = { get(modelId: string): Promise<PiModel> };                  // rejects with NotPossibleError
@@ -471,20 +505,18 @@ it('reads hasMesh from an available 50k obj', ...)     // meshes [] → false; [
 
 ### Task B2: Rooms that count, and profiles
 
-**Files:** Create `server/src/quick/rooms.ts`, `server/src/quick/profiles.ts`, `server/src/quick/materials.ts`; Test `server/test/quick-rooms.test.ts`
+**Files:** Create `server/src/quick/rooms.ts`, `server/src/quick/profiles.ts`, `server/src/quick/finish.ts`; Test `server/test/quick-rooms.test.ts`
 
 **Interfaces — Produces:**
 ```ts
 export type UsableRoom = PiRoom & { name: string; heightAssumed: boolean };
 export function usableRooms(model: PiModel, kind: PropertyKind): { rooms: UsableRoom[]; skipped: number };
-export type Material = { absorption: [number, number, number]; blockingDb: [number, number, number] };
-export const MATERIALS: Record<string, Material>;                       // V2 4.1 table, every row, values verbatim
-export const FURNISHING: Record<'empty' | 'sparse' | 'furnished' | 'studio', number>;   // 0, 0.08, 0.15, 0.30
-export function roomFinish(roomName: string, facts: string[]): { floor: string; walls: string; ceiling: string; furnishing: number };   // V2 4.4 table
+// finish.ts — uses MATERIALS, FURNISHING, ROOM_TABLE, roomType from server/src/shared/materials.ts (Task 0.6)
+export function roomFinish(roomName: string, facts: string[]): { floor: MaterialName; walls: MaterialName; ceiling: MaterialName; furnishing: number };
 export const PROFILES: Record<ProfileId, Requirements>;
 export function resolveRequirements(profile: ProfileId, overrides?: Partial<RequirementOverrides>): Requirements;
 ```
-`usableRooms`: drop rooms with area < 1 m², or whose top class is `Void`; name = `label` → top class → `'Room'`; height 0 → 2.7 (home, apartment) or 3.5 (commercial) with `heightAssumed`; keep the 40 largest. `roomFinish`: match the name against the V2 4.4 rows (case-insensitive: kitchen, dining, living/family, bedroom, bath, laundry/utility, hall/entry/stair, office, closet, garage; else "other"); blended rows use the first-listed material; the fact `'hardwood floors'` makes living rooms and bedrooms `wood_floor`. `PROFILES` from spec 5.5 with these weights (echo / outside / escape / size / bass):
+`usableRooms`: drop rooms with area < 1 m², or whose top class is `Void`; name = `label` → top class → `'Room'`; height 0 → 2.7 (home, apartment) or 3.5 (commercial) with `heightAssumed`; keep the 40 largest. `roomFinish`: `ROOM_TABLE[roomType(name)]`; a mix uses its heaviest material; the fact `'hardwood floors'` makes living rooms and bedrooms `wood_floor`. `PROFILES` from spec 5.5 with these weights (echo / outside / escape / size / bass):
 
 | recording .35/.30/.10/.10/.15 | rehearsal .15/.10/.45/.20/.10 | podcast .45/.40/0/.10/.05 | home_office .35/.50/0/.15/0 | sleep .10/.75/0/.15/0 |
 |---|---|---|---|---|
@@ -1004,29 +1036,9 @@ Owns everything; one agent, tasks in order.
 - [ ] **Step 2:** Run `npm run warm -- "I want a place in Houston where I can record music"` twice. Expected: the second run finishes in under 5 s.
 - [ ] **Step 3:** Commit: `feat: warm script for demo queries`.
 
-### Task Z3: F7 — suggest a sound in the tour
+### Task Z3: (dropped)
 
-**Files:** Modify `server/src/agent/tools.ts`, `server/src/agent/index.ts`, `app/src/tour/start.ts`, `app/index.html`; Create `app/src/tour/chat.ts`; Tests beside each
-
-**Interfaces:**
-```ts
-// tools.ts
-export const PLACE_SOUND_TOOL: Anthropic.Tool;     // { room: string, sound: 'music' | 'conversation' } → event { type: 'placeSound', room, sound }
-// agent/index.ts: when request.tour is set, tools = [...TOOLS, PLACE_SOUND_TOOL] and the first user turn of the tour is "The user entered <address>."
-// tour/chat.ts
-export function startTourChat(root: HTMLElement, modelId: string, onPlaceSound: (room: string, sound: SoundId) => string): void;   // returns the sentence to show
-```
-`onPlaceSound` in `start.ts`: first check spec V3-Q1 by logging one sweep from `sdk.Sweep.data` in dev — if a sweep carries a room id, place the source at the sweep nearest that room; if not, place it 2 m in front of the listener and return `I can't place it in that room yet, so I put it in front of you.` The chat reuses `askAgent` and the `conversationId` from `front/state.ts` `load()`; without one it starts a new conversation. A server that can't be reached shows `Assistant not available.` and the tour continues.
-
-- [ ] **Step 1: Write the failing tests**
-```ts
-it('offers place_sound only in the tour', ...)          // request.tour set → params.tools has 4 names; unset → 3
-it('emits placeSound', ...)                             // runTool('place_sound', { room: 'Bedroom 2', sound: 'music' }) → events [{ type: 'placeSound', … }]
-it('rejects a sound outside the library', ...)          // isError, bad_request
-it('adds a point source and reports where', ...)        // chat.test.ts: a placeSound event calls onPlaceSound and shows its sentence
-```
-- [ ] **Step 2–4:** Run (FAIL), implement, run (PASS). In the browser: enter a property from a card, the agent offers a sound in its recommended room, "yes" plays it.
-- [ ] **Step 5:** Commit: `feat: the agent can place a sound in the tour`. **This task is the first to cut if time is short.**
+F7, "suggest a sound in the tour", is built by the V2 plan instead: Jev's `place_speaker` tool and chat ([V2 plan](2026-11-14-v2-settings-jev.md), Lane L). `AgentEvent`'s `placeSound` variant and `AgentRequest.tour` stay in the contract unused.
 
 ### Task Z4: Footstep floor, docs, final pass
 
