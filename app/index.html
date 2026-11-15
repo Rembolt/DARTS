@@ -16,6 +16,21 @@
         display: flex;
         flex-direction: column;
       }
+      /* One page, two states (main.ts shows one): the tour fills the window as the body did before. */
+      #tour {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+      #tour[hidden],
+      #front[hidden] {
+        display: none;
+      }
+      #front {
+        padding: 24px;
+        line-height: 1.4;
+      }
       header {
         display: flex;
         gap: 16px;
@@ -98,18 +113,21 @@
     </style>
   </head>
   <body>
-    <header>
-      <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
-      <button id="blueprint-mode" type="button" disabled>X-ray</button>
-      <button id="audio-toggle" type="button" aria-pressed="false">Start audio</button>
-      <p id="status">Loading…</p>
-      <p id="pose"></p>
-      <p id="sim"></p>
-    </header>
-    <div id="stage">
-      <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
-      <canvas id="blueprint" hidden></canvas>
+    <div id="tour" hidden>
+      <header>
+        <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
+        <button id="blueprint-mode" type="button" disabled>X-ray</button>
+        <button id="audio-toggle" type="button" aria-pressed="false">Start audio</button>
+        <p id="status">Loading…</p>
+        <p id="pose"></p>
+        <p id="sim"></p>
+      </header>
+      <div id="stage">
+        <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
+        <canvas id="blueprint" hidden></canvas>
+      </div>
     </div>
+    <main id="front" hidden></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
