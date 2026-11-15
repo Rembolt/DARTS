@@ -19,7 +19,8 @@ const ray = new Ray();
  *   scan triangles from chaining into one endless "wall" across a room.
  * - A wall's blocking, per band, is the largest blocking of the materials in its group (a floor slab seen as a floor
  *   face plus a ceiling face blocks like the floor). Each wall multiplies by `10^(−blocking × transmissionScale / 10)`.
- * - Returns null as soon as more than `maxWalls` walls are found (the caller skips the leg).
+ * - Returns null as soon as more than `maxWalls` walls are found (the caller skips the leg). With `maxWalls` 0 it
+ *   only asks for the nearest hit.
  */
 export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = Infinity): Crossing | null {
   const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
@@ -28,6 +29,10 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   if (length === 0) return { walls: 0, transmission };
   ray.origin.set(from[0], from[1], from[2]);
   ray.direction.set(dx / length, dy / length, dz / length);
+  if (maxWalls === 0) {
+    // Only a clear segment passes: the nearest hit is enough, and much cheaper than collecting all of them.
+    return state.index.bvh.raycastFirst(ray, DoubleSide, 0, length) ? null : { walls: 0, transmission };
+  }
   const hits = state.index.bvh.raycast(ray, DoubleSide, 0, length);
   if (hits.length === 0) return { walls: 0, transmission };
   const distances = new Float64Array(hits.length);

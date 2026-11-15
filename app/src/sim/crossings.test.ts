@@ -39,3 +39,8 @@ it('a floor slab (floor face + ceiling face) blocks like the floor', () => {
   const scale = simConfig().transmissionScale;
   c.transmission.forEach((t, k) => expect(dB(t)).toBeCloseTo(-simConfig().materials.floor.blockingDb[k] * scale, 6));
 });
+
+it('with maxWalls 0 a clear segment passes and any crossing fails', () => {
+  expect(crossSegment(splitRoom(), [1, 1.5, 1.5], [1.8, 1.5, 1.5], 0)).toEqual({ walls: 0, transmission: [1, 1, 1] });
+  expect(crossSegment(splitRoom(), [1, 1.5, 1.5], [3, 1.5, 1.5], 0)).toBeNull();
+});
