@@ -14,11 +14,13 @@ export type SoundKind = 'point' | 'ambient' | 'stereo';
 /** Same ids as the V2 sound library (v2-design.md 5.3). */
 export const SOUND_LIBRARY: { id: string; label: string; kind: SoundKind; levelDb: number }[] = [
   { id: 'music', label: 'Music', kind: 'point', levelDb: 0 },
-  { id: 'conversation', label: 'Conversation', kind: 'point', levelDb: -6 },
+  { id: 'speaking', label: 'Person speaking', kind: 'point', levelDb: -6 },
+  { id: 'conversation', label: 'Crowd talking', kind: 'point', levelDb: -6 },
   { id: 'highway', label: 'Highway', kind: 'ambient', levelDb: -12 },
   { id: 'city_ambience', label: 'City street', kind: 'ambient', levelDb: -14 },
   { id: 'nature_ambience', label: 'Nature', kind: 'ambient', levelDb: -20 },
-  { id: 'train', label: 'Train passing', kind: 'stereo', levelDb: -10 },
+  { id: 'train', label: 'Train station', kind: 'stereo', levelDb: -10 },
+  { id: 'plane', label: 'Plane passing', kind: 'stereo', levelDb: -10 },
 ];
 
 export type Speaker = {

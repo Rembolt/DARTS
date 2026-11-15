@@ -7,6 +7,8 @@ import { createAudioEngine, type AudioEngine, type SourceSpec } from '../audio/e
 import { loadSound } from '../audio/sounds';
 import { surroundingSources, surroundingsNotice } from '../audio/surroundings';
 import { createFootsteps, FOOTSTEP_FILES, type Footsteps } from '../audio/footsteps';
+import { createOpeningSound, openingsToggled, type OpeningSound } from '../audio/opening-sound';
+import { effect } from '@preact/signals';
 import { Reverb } from '../audio/reverb';
 import { BLUEPRINT, MAX_SOURCES, simConfig, SOUNDS } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
@@ -131,6 +133,7 @@ export function startTour(modelId: string): void {
   let audio: AudioEngine | null = null;
   let reverb: Reverb | null = null;
   let footsteps: Footsteps | null = null;
+  let openingSound: OpeningSound | null = null;
   let stepsOn = true;
   let floor: 'hard' | 'soft' = 'hard'; // from the property's status (carpet in the listing: soft)
   let traceId = 0;
@@ -201,6 +204,8 @@ export function startTour(modelId: string): void {
     reverb = null;
     footsteps?.dispose();
     footsteps = null;
+    openingSound?.dispose();
+    openingSound = null;
     const old = audio;
     audio = null;
     if (old) void old.stop();
@@ -371,6 +376,20 @@ export function startTour(modelId: string): void {
     showSteps(!made);
   }
 
+  async function startOpeningSound(engine: AudioEngine): Promise<void> {
+    const made = await createOpeningSound(engine.context, { master: engine.master, reverbInput: engine.reverbInput });
+    if (audio !== engine) { made?.dispose(); return; }
+    openingSound = made;
+  }
+
+  // A door or window opened or closed (by a click, the panel or the agent): play its sound once.
+  let lastOpenings = ui.openings.value;
+  cleanups.push(effect(() => {
+    const next = ui.openings.value;
+    if (openingsToggled(lastOpenings, next)) openingSound?.play();
+    lastOpenings = next;
+  }));
+
   function flipSteps(): void {
     if (!footsteps) return;
     stepsOn = !stepsOn;
@@ -389,6 +408,8 @@ export function startTour(modelId: string): void {
       reverb = null;
       footsteps?.dispose();
       footsteps = null;
+      openingSound?.dispose();
+      openingSound = null;
       showSteps();
       showAudio('off');
       void old.stop().then(prewarm);
@@ -408,6 +429,7 @@ export function startTour(modelId: string): void {
         engine.connectReverb(reverb.input);
         reverb.output.connect(engine.master);
         void startFootsteps(engine);
+        void startOpeningSound(engine);
         estimateRoom = undefined;
         const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
         if (known) setEchoTime(known, 'cached room');

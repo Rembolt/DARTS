@@ -1,9 +1,11 @@
-"""Turn picked recordings from the CLR Music city-ambience pack into the tour's outside-sound loops.
+"""Turn picked recordings in the audios folder into the tour's sound files.
 
 Usage: python scripts/build-audio-from-pack.py <the audios folder: the unzipped pack, files renamed as in its OPTIONS.md>
-Needs: pip install numpy scipy soundfile. Writes app/public/audio/<name>.ogg: about 30 s, mono, looped by repeating the
-short source with equal-power crossfades, and with its end blended into its start so it repeats without a click.
-Every pick is CC0 per the pack's LICENSES.txt (rows are in app/public/audio/CREDITS.md). `train` stays stereo (a one-shot).
+Needs: pip install numpy scipy soundfile. Writes app/public/audio/<name>.ogg. Three ways to build a file:
+  'loop30': about 30 s, the short source repeated with equal-power crossfades, its end blended into its start.
+  'loop':   the whole source, its end blended into its start so it repeats without a click.
+  'once':   the whole source as it is (a pass-by or a single effect).
+Licences differ per pick: each row is in app/public/audio/CREDITS.md.
 """
 import os
 import sys
@@ -11,14 +13,18 @@ import numpy as np
 import soundfile as sf
 
 PICKS = {
-    # output name: (source file in the pack, mono?)
-    'residential_ambience': ('residential__quiet-north-street__CC0.wav', True),
-    'city_ambience': ('city__city-street__CC0.wav', True),
-    'commercial_ambience': ('commercial__market-environment__CC0.wav', True),
-    'industrial_ambience': ('industrial__loop-construction-site__CC0.ogg', True),
-    'nature_ambience': ('nature__tokyo-park-at-dusk__CC0.wav', True),
-    'road': ('road__loop-highway__CC0.ogg', True),
-    'train': ('train__long-train-ride__CC0.wav', False),
+    # output name: (source file in the audios folder, mono?, how)
+    'residential_ambience': ('residential__quiet-north-street__CC0.wav', True, 'loop30'),
+    'city_ambience': ('city__city-street__CC0.wav', True, 'loop30'),
+    'commercial_ambience': ('commercial__market-environment__CC0.wav', True, 'loop30'),
+    'industrial_ambience': ('industrial__loop-construction-site__CC0.ogg', True, 'loop30'),
+    'nature_ambience': ('nature__tokyo-park-at-dusk__CC0.wav', True, 'loop30'),
+    'road': ('road__loop-highway__CC0.ogg', True, 'loop30'),
+    'train': ('train__trainstation__CCBY30.wav', False, 'loop30'),
+    'plane': ('plane__jet-plane-fly-by__PIXABAY.mp3', False, 'once'),
+    'speaking': ('speaking__science-teacher-lecturing__PIXABAY.mp3', True, 'loop'),
+    'conversation': ('crowd__conversation__PIXABAY.mp3', True, 'loop'),
+    'opening': ('door__window-opening__PIXABAY.mp3', True, 'once'),
 }
 TARGET_S = 30.0
 FADE_S = 0.5
@@ -31,12 +37,15 @@ def crossfade_join(a, b, n):
     return np.concatenate([a[:-n], mid, b[n:]])
 
 
-def build(x, sr):
+def build(x, sr, how):
+    if how == 'once':
+        return x
     n = int(FADE_S * sr)
     out = x
-    while len(out) < int(TARGET_S * sr) + n:
-        out = crossfade_join(out, x, min(n, len(x) // 2))
-    out = out[: int(TARGET_S * sr) + n]
+    if how == 'loop30':
+        while len(out) < int(TARGET_S * sr) + n:
+            out = crossfade_join(out, x, min(n, len(x) // 2))
+        out = out[: int(TARGET_S * sr) + n]
     # Blend the end into the start so the loop point is seamless, and drop the blended tail.
     head, tail = out[:n], out[-n:]
     t = np.linspace(0, np.pi / 2, n)[:, None]
@@ -46,11 +55,11 @@ def build(x, sr):
 
 
 def main(src):
-    for name, (file, mono) in PICKS.items():
+    for name, (file, mono, how) in PICKS.items():
         x, sr = sf.read(os.path.join(src, file), always_2d=True)
         if mono:
             x = x.mean(axis=1, keepdims=True)
-        y = build(x, sr)
+        y = build(x, sr, how)
         peak = float(np.abs(y).max())
         if peak > 0:
             y = y / peak * 0.8

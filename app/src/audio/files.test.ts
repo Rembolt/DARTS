@@ -10,15 +10,13 @@ const DIR = resolve(__dirname, '../../public/audio');
 const urlToPath = (url: string) => resolve(DIR, url.replace(/^\/audio\//, ''));
 const isOgg = (path: string) => readFileSync(path).subarray(0, 4).toString('latin1') === 'OggS';
 
-// `conversation` has no file yet: nothing places it by default (V2's Jev can). Anything else listed must exist.
-const NOT_YET: SoundId[] = ['conversation'];
 // The footsteps load footstep_<floor>_1..4.ogg (audio/footsteps.ts); their SOUNDS entries only carry the level.
 const NUMBERED: SoundId[] = ['footstep_hard', 'footstep_soft'];
 
 describe('sound files the tour loads', () => {
   it('every sound in SOUNDS has a real Ogg file in app/public/audio', () => {
     const missing = (Object.entries(SOUNDS) as [SoundId, { file: string }][])
-      .filter(([id]) => !NOT_YET.includes(id) && !NUMBERED.includes(id))
+      .filter(([id]) => !NUMBERED.includes(id))
       .filter(([, s]) => !existsSync(urlToPath(s.file)) || !isOgg(urlToPath(s.file)))
       .map(([id]) => id);
     expect(missing).toEqual([]);
