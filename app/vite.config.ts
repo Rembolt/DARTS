@@ -14,6 +14,21 @@ export default defineConfig({
       'react/jsx-runtime': 'preact/jsx-runtime',
     },
   },
+  // Pre-bundle everything the page imports at start. Without this, Vite finds the three.js line modules and the Radix
+  // packages only after the page loads, rebuilds its cache, and every tab already open gets "504 Outdated Optimize Dep".
+  optimizeDeps: {
+    include: [
+      'three/examples/jsm/lines/Line2.js',
+      'three/examples/jsm/lines/LineGeometry.js',
+      'three/examples/jsm/lines/LineMaterial.js',
+      'three-mesh-bvh',
+      'sonner',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-select',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-tooltip',
+    ],
+  },
   server: {
     host: 'localhost',
     proxy: {
