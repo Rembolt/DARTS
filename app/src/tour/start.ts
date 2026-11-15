@@ -224,7 +224,13 @@ export function startTour(modelId: string): void {
   }
 
   function sendTrace(position: Vec3 | null): void {
-    if (!position || !sim || !sources?.length) return;
+    if (!position) return;
+    if (!sim || !sources?.length) {
+      // Asked for, but nothing to trace through yet (the sources arrive after the surroundings). Without this the scheduler
+      // waits forever for an answer to a trace that was never sent, and no trace ever runs again.
+      traces.cancel();
+      return;
+    }
     sim.worker.postMessage({ type: 'trace', id: ++traceId, listener: position, sources });
   }
 

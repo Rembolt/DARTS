@@ -46,6 +46,13 @@ export class TraceScheduler {
     return this.onResult();
   }
 
+  /** A trace that was asked for could not be sent (no sources yet): nothing is in flight, so the next position is traced. */
+  cancel(): void {
+    this.inFlight = false;
+    this.pending = null;
+    this.last = null;
+  }
+
   /** Forget the last trace, e.g. after the sources moved: the next position is traced whatever the distance. */
   invalidate(): void {
     if (this.inFlight && !this.pending && this.last) this.pending = this.last;

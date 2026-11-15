@@ -73,4 +73,13 @@ describe('firstRoomId', () => {
     expect(firstRoomId({ rooms: [] })).toBeNull();
     expect(firstRoomId(undefined)).toBeNull();
   });
+
+  it('cancel frees a trace that was asked for but never sent, so the next position is traced', () => {
+    const s = new TraceScheduler(1);
+    expect(s.onListener([0, 0, 0])).not.toBeNull(); // asked for: now "in flight"
+    expect(s.onListener([5, 0, 0])).toBeNull(); // waits behind it
+    s.cancel(); // it could not be sent (no sources yet)
+    expect(s.busy).toBe(false);
+    expect(s.onListener([5, 0, 0])).toEqual([5, 0, 0]);
+  });
 });
