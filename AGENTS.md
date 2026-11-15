@@ -56,12 +56,12 @@ These are not in the vendor docs and cost time to find out.
   triangles, 85,456 vertices, 116,539 triangles. Its download link expires about 20 minutes after the query. Raw height
   runs from −0.6 to 19.3 m, more than one storey.
 - **The mesh is open and bumpy:** about 51,000 edges have one triangle and most shared edges fold more than 25°, so the
-  blueprint gets 135,733 lines at the design's 25° (103,222 at 60°). Thinning them is a step 4 decision.
+  blueprint gets 135,730 lines at the design's 25° (103,222 at 60°). Thinning them is a step 4 decision.
 - **Winding faces into the rooms:** floor triangles average 3.0 m high and ceiling triangles 7.5 m with the
   `(b − a) × (c − a)` rule, so materials need no flip.
 - **`three-mesh-bvh` reorders `mesh.indices` in place** when it builds the index. Compute anything per triangle after
   `buildRayIndex`, so triangle numbers match the hits it reports.
-- **Worker load on the demo mesh:** 839 ms in headless Chrome; best of 6 in Node 782 ms (parse 316, index 173,
+- **Worker load on the demo mesh:** 874 ms in headless Chrome; best of 6 in Node 782 ms (parse 316, index 173,
   materials 17, lines 228).
 - **Headless Chrome prints nothing on this Windows setup** (`--dump-dom`, even `--version`). Drive it through
   `--remote-debugging-port` instead.

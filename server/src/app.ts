@@ -59,7 +59,17 @@ export function createApp(
     }
     try {
       const path = await mesh.meshPath(MODEL_ID);
-      res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8').sendFile(path);
+      res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8');
+      res.sendFile(path, err => {
+        // For example the cached file was deleted or is locked. Answer JSON like every other mesh error.
+        if (!err) return;
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+        res.removeHeader('Content-Type');
+        res.status(500).json({ error: `Could not send the cached mesh: ${err.message}` });
+      });
     } catch (err) {
       const status = err instanceof MeshError ? err.status : 500;
       const message = err instanceof Error ? err.message : 'Mesh failed for an unknown reason';

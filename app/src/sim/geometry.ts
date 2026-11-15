@@ -1,5 +1,5 @@
 // The ray index (mvp-design.md 5.1 step 4). Later steps trace against it.
-import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, DoubleSide, Ray } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import type { Mesh } from './obj';
 import type { Vec3 } from './types';
@@ -23,7 +23,7 @@ export function firstHit(
   far = Infinity,
 ): { distance: number; triangle: number } | null {
   ray.origin.set(origin[0], origin[1], origin[2]);
-  ray.direction.copy(new Vector3(dir[0], dir[1], dir[2]).normalize());
+  ray.direction.set(dir[0], dir[1], dir[2]).normalize(); // no allocation: this runs for every traced ray
   const hit = index.bvh.raycastFirst(ray, DoubleSide, 0, far);
   if (!hit || hit.faceIndex == null) return null;
   return { distance: hit.distance, triangle: hit.faceIndex };

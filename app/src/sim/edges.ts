@@ -1,4 +1,5 @@
 // Blueprint lines (mvp-design.md 5.1 step 6).
+import { faceNormals, isDegenerate } from './normals';
 import type { Mesh } from './obj';
 
 const WELD = 1000; // positions closer than 1 mm count as one point
@@ -9,8 +10,9 @@ const WELD = 1000; // positions closer than 1 mm count as one point
  *
  * Edges are matched on welded positions, so the duplicated vertices along the mesh's chunk seams draw no line.
  * A neighbour wound the other way round is flipped before comparing, so it does not read as a 180° fold.
+ * A zero-area triangle has no facing, so an edge it shares is treated as flat, not as a fold.
  */
-export function extractLines(mesh: Mesh, angleDeg: number): Float32Array {
+export function extractLines(mesh: Mesh, angleDeg: number, normals: Float32Array = faceNormals(mesh)): Float32Array {
   const { positions: p, indices } = mesh;
   const triangleCount = indices.length / 3;
 
@@ -37,19 +39,6 @@ export function extractLines(mesh: Mesh, angleDeg: number): Float32Array {
     weldOf[v] = id;
   }
   const weldCount = ids.size;
-
-  // Unit normal per triangle (from its winding).
-  const normals = new Float32Array(triangleCount * 3);
-  for (let t = 0; t < triangleCount; t++) {
-    const a = indices[3 * t] * 3, b = indices[3 * t + 1] * 3, c = indices[3 * t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const len = Math.hypot(nx, ny, nz) || 1;
-    normals[3 * t] = nx / len;
-    normals[3 * t + 1] = ny / len;
-    normals[3 * t + 2] = nz / len;
-  }
 
   // Group triangle edges by their welded end points, in flat arrays (one slot per distinct edge). Per edge: one
   // vertex at each end (for output), the first two triangles, whether each walks it low → high id, and how many share it.
@@ -89,6 +78,9 @@ export function extractLines(mesh: Mesh, angleDeg: number): Float32Array {
   let written = 0;
   for (let e = 0; e < edgeCount; e++) {
     let keep = count[e] !== 2;
+    if (!keep && (isDegenerate(normals, t0[e]) || isDegenerate(normals, t1[e]))) {
+      continue;
+    }
     if (!keep) {
       // Consistently wound neighbours walk a shared edge in opposite directions. If both walk it the same way,
       // one of them is wound backwards: flip its normal.

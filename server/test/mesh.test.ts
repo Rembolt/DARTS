@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import request from 'supertest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, MODEL_ID } from '../src/app.js';
@@ -156,6 +156,70 @@ describe('createMeshSource', () => {
   });
 });
 
+describe('createMeshSource time limits and edge cases', () => {
+  const SHORT = { graphqlMs: 50, downloadMs: 50 };
+
+  /** A fetch that never answers, except by rejecting when its signal aborts. */
+  const stalled = ((_url: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+    })) as typeof fetch;
+
+  it('gives up on a GraphQL request that never answers, and a later call tries again', async () => {
+    const cacheDir = tempDir();
+    const source = createMeshSource({ cacheDir, env: ENV, fetchFn: stalled, timeouts: SHORT });
+    const err = await meshError(source.meshPath('Ki9YdfpNKum'));
+    expect(err.status).toBe(504);
+    expect(err.message).toBe('Matterport GraphQL timed out after 50 ms');
+
+    const retry = fakeFetch();
+    const path = await createMeshSource({ cacheDir, env: ENV, fetchFn: retry.fn, timeouts: SHORT }).meshPath('Ki9YdfpNKum');
+    expect(readFileSync(path, 'utf8')).toBe(OBJ);
+  });
+
+  it('gives up on a download whose body stalls, and leaves nothing cached', async () => {
+    const cacheDir = tempDir();
+    const fn = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('api.matterport.com')) return Response.json(BOTH);
+      const body = new ReadableStream({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('v 0 0 0\n'));
+          init?.signal?.addEventListener('abort', () => c.error(init.signal!.reason));
+        },
+      });
+      return new Response(body);
+    }) as typeof fetch;
+    const source = createMeshSource({ cacheDir, env: ENV, fetchFn: fn, timeouts: SHORT });
+    const err = await meshError(source.meshPath('Ki9YdfpNKum'));
+    expect(err.status).toBe(504);
+    expect(err.message).toBe('Mesh download timed out after 50 ms');
+    expect(readdirSync(cacheDir)).toEqual([]);
+  });
+
+  it('uses a partial answer that still holds an available 50k mesh', async () => {
+    const graphql = () => Response.json({ ...BOTH, errors: [{ message: 'field x is deprecated' }] });
+    const path = await createMeshSource({ cacheDir: tempDir(), env: ENV, fetchFn: fakeFetch({ graphql }).fn }).meshPath('Ki9YdfpNKum');
+    expect(readFileSync(path, 'utf8')).toBe(OBJ);
+  });
+
+  it('refuses a 50k mesh that is not available yet', async () => {
+    const graphql = () => Response.json(meshList([{ format: 'obj', resolution: '50k', status: 'processing', url: URL_50K }]));
+    const { fn, calls } = fakeFetch({ graphql });
+    const err = await meshError(createMeshSource({ cacheDir: tempDir(), env: ENV, fetchFn: fn }).meshPath('Ki9YdfpNKum'));
+    expect(err.status).toBe(502);
+    expect(err.message).toBe('The 50k mesh for model Ki9YdfpNKum is not available (status: processing)');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('overwrites a temp file left by a server killed mid-download', async () => {
+    const cacheDir = tempDir();
+    writeFileSync(join(cacheDir, '.Ki9YdfpNKum-50k.part'), 'half a file from last time');
+    const path = await createMeshSource({ cacheDir, env: ENV, fetchFn: fakeFetch().fn }).meshPath('Ki9YdfpNKum');
+    expect(readFileSync(path, 'utf8')).toBe(OBJ);
+    expect(readdirSync(cacheDir)).toEqual(['Ki9YdfpNKum-50k.obj']);
+  });
+});
+
 describe('GET /api/mesh/:id', () => {
   const fileSource = (): MeshSource => createMeshSource({ cacheDir: tempDir(), env: ENV, fetchFn: fakeFetch().fn });
 
@@ -181,6 +245,13 @@ describe('GET /api/mesh/:id', () => {
     const res = await request(createApp({}, { mesh: failing })).get(`/api/mesh/${MODEL_ID}`);
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'Mesh download failed: HTTP 403' });
+  });
+
+  it('answers JSON when the cached file cannot be sent', async () => {
+    const gone: MeshSource = { meshPath: async () => join(tempDir(), 'deleted.obj') };
+    const res = await request(createApp({}, { mesh: gone })).get(`/api/mesh/${MODEL_ID}`);
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/^Could not send the cached mesh: /);
   });
 
   it('answers 503 without a mesh source', async () => {

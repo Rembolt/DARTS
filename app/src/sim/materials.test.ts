@@ -28,3 +28,9 @@ it('splits at 45°: a slope of 37° from level is floor, 53° is wall', () => {
 it('tags a zero-area triangle as wall', () => {
   expect(tagMaterials(tri(0, 0, 0, 1, 0, 0, 2, 0, 0))[0]).toBe(MATERIAL_IDS.wall);
 });
+
+it('gives the same tags with precomputed normals', async () => {
+  const { faceNormals } = await import('./normals');
+  const m = tri(0, 0, 0, 0, 0, 1, 1, 0, 0);
+  expect(tagMaterials(m, faceNormals(m))).toEqual(tagMaterials(m));
+});

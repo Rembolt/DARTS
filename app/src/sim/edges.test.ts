@@ -48,3 +48,10 @@ it('welds seams the same way far from the origin (beyond ±65 m)', () => {
   const far = [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1].map((v, i) => (i % 3 === 0 ? v + 100 : v));
   expect(lineCount(extractLines(mesh(far, [0, 1, 2, 3, 4, 5]), 25))).toBe(4);
 });
+
+it('treats an edge shared with a zero-area triangle as flat, not as a fold', () => {
+  // A square split along its diagonal, with a zero-area triangle lying on the diagonal between the two halves.
+  const p = [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0.5, 0, 0.5];
+  const withSliver = mesh(p, [0, 1, 2, 2, 0, 4, 0, 4, 3, 4, 2, 3]);
+  expect(lineCount(extractLines(withSliver, 25))).toBe(4);
+});

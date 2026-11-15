@@ -17,8 +17,9 @@ class Grow<T extends Float32Array | Uint32Array> {
     }
     this.data[this.length++] = v;
   }
+  /** The filled part. A view when at least half full (no copy); a trimmed copy otherwise, so memory is not wasted. */
   done(): T {
-    return this.data.slice(0, this.length) as T;
+    return (this.length * 2 >= this.data.length ? this.data.subarray(0, this.length) : this.data.slice(0, this.length)) as T;
   }
 }
 
@@ -65,10 +66,15 @@ export function parseObj(obj: ArrayBuffer): Mesh {
     const c1 = text.charCodeAt(i + 1);
     const isKeyword = c1 === SPACE || c1 === TAB;
     if (c0 === 118 /* v */ && isKeyword) {
+      const lineStart = i;
       i += 2;
-      const x = Number(token());
-      const y = Number(token());
-      const z = Number(token());
+      const tx = token(), ty = token(), tz = token();
+      const x = Number(tx), y = Number(ty), z = Number(tz);
+      // Number('') is 0, so check the tokens are there; NaN or Infinity would break the ray index and the bounds.
+      if (tz === '' || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        const end = text.indexOf('\n', lineStart);
+        throw new Error(`Vertex is not three numbers: "${text.slice(lineStart, end === -1 ? n : end).trim()}"`);
+      }
       positions.push(x);
       positions.push(z);
       positions.push(-y);

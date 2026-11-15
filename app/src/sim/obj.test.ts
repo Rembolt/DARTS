@@ -26,3 +26,12 @@ it('rejects a face that points past the vertex list', () => {
     'Face refers to vertex 9, which does not exist',
   );
 });
+
+it('rejects a vertex with a missing coordinate instead of reading it as 0', () => {
+  expect(() => parseObj(bytes('v 1.0 2.0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'))).toThrow('Vertex is not three numbers: "v 1.0 2.0"');
+});
+
+it('rejects a vertex that is not a number', () => {
+  expect(() => parseObj(bytes('v 1 2 nan\n'))).toThrow('Vertex is not three numbers: "v 1 2 nan"');
+  expect(() => parseObj(bytes('v 1 2 Infinity\n'))).toThrow('Vertex is not three numbers');
+});

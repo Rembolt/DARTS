@@ -2,13 +2,14 @@
 import { extractLines } from './edges';
 import { buildRayIndex, type RayIndex } from './geometry';
 import { tagMaterials } from './materials';
+import { faceNormals } from './normals';
 import { parseObj, type Mesh } from './obj';
 import type { FromWorker, SimConfig, Vec3 } from './types';
 
 export type ReadyMessage = Extract<FromWorker, { type: 'ready' }>;
 
 /** What the worker keeps after loading. Tracing (later steps) reads it. */
-export type SimState = { mesh: Mesh; materials: Uint8Array; index: RayIndex; config: SimConfig };
+export type SimState = { mesh: Mesh; normals: Float32Array; materials: Uint8Array; index: RayIndex; config: SimConfig };
 
 function bounds(positions: Float32Array): { min: Vec3; max: Vec3 } {
   const min: Vec3 = [Infinity, Infinity, Infinity];
@@ -33,14 +34,15 @@ export function loadSim(obj: ArrayBuffer, config: SimConfig): { state: SimState;
   // numbers match the `triangle` that firstHit reports.
   const index = buildRayIndex(mesh);
   const t2 = performance.now();
-  const materials = tagMaterials(mesh);
+  const normals = faceNormals(mesh);
+  const materials = tagMaterials(mesh, normals);
   const t3 = performance.now();
-  const lines = extractLines(mesh, config.blueprintEdgeAngle);
+  const lines = extractLines(mesh, config.blueprintEdgeAngle, normals);
   const t4 = performance.now();
 
   const { min, max } = bounds(mesh.positions);
   return {
-    state: { mesh, materials, index, config },
+    state: { mesh, normals, materials, index, config },
     ready: {
       type: 'ready',
       lines,
