@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
+import { sendNotPossible } from './errors.js';
+import { isModelId } from './ids.js';
 import { MeshError, type MeshSource } from './mesh.js';
-
-/** The only model this server serves (mvp-design.md 4.1). */
-export const MODEL_ID = 'Ki9YdfpNKum';
+import { DEMO_MODEL_ID, notPossible, type Health } from './shared/contract.js';
 
 /** Sent with HTTP 503 for any /bundle request while the Bundle is not fetched. The app shows it as is. */
 export const BUNDLE_MISSING = 'Matterport Bundle missing. Run: npm run fetch-bundle';
@@ -17,6 +17,12 @@ export interface AppOptions {
   bundleDir?: string;
   /** Where meshes come from (`createMeshSource`). Without it, /api/mesh answers 503. */
   mesh?: MeshSource;
+  /** The catalogued model ids this server may serve. Absent: only the demo house. */
+  allowedIds?: Set<string>;
+  /** Mounted at /api, after a 4 kB JSON body parser. */
+  routers?: express.Router[];
+  /** Extra health flags (the search index); bundle and the key flags are filled in here. */
+  health?: () => Partial<Health>;
 }
 
 export function createApp(
@@ -24,13 +30,17 @@ export function createApp(
   options: AppOptions = {},
 ): express.Express {
   const app = express();
-  const { bundleDir, mesh } = options;
+  const { bundleDir, mesh, routers = [], health } = options;
+  const allowedIds = options.allowedIds ?? new Set([DEMO_MODEL_ID]);
+  const isAllowed = (id: unknown): id is string => isModelId(id) && (id === DEMO_MODEL_ID || allowedIds.has(id));
+  const has = (key: string) => Boolean(env[key]?.trim());
+  const bundleReady = () => Boolean(bundleDir && existsSync(join(bundleDir, 'showcase.html')));
 
   // express.static falls through to the next handler when a file is not there. Only then do we look at the
   // disk, so normal asset requests never block on a stat, and a Bundle fetched while the server runs needs no restart.
   if (bundleDir) app.use('/bundle', express.static(bundleDir));
   app.use('/bundle', (_req, res) => {
-    if (bundleDir && existsSync(join(bundleDir, 'showcase.html'))) {
+    if (bundleReady()) {
       res.status(404).type('text/plain').send('Not in the Matterport Bundle');
       return;
     }
@@ -38,19 +48,26 @@ export function createApp(
   });
 
   // Only the SDK key may reach the browser; the API token never does.
-  app.get('/api/config', (_req, res) => {
+  app.get('/api/config', (req, res) => {
+    const requested = req.query.m;
+    if (requested !== undefined && !isAllowed(requested)) {
+      sendNotPossible(res, notPossible('unknown_model'));
+      return;
+    }
+    const modelId = requested ?? DEMO_MODEL_ID;
     const sdkKey = env.MATTERPORT_SDK_KEY?.trim();
     if (!sdkKey) {
       res.status(500).json({ error: 'MATTERPORT_SDK_KEY is not set in .env' });
       return;
     }
-    res.json({ sdkKey, modelId: MODEL_ID });
+    res.json({ sdkKey, modelId });
   });
 
   // The mesh as an OBJ file, downloaded once and then served from the disk cache. The GraphQL token stays here.
   app.get('/api/mesh/:id', async (req, res) => {
-    if (req.params.id !== MODEL_ID) {
-      res.status(404).json({ error: `Only model ${MODEL_ID} is served` });
+    const id = req.params.id;
+    if (!isAllowed(id)) {
+      sendNotPossible(res, notPossible('unknown_model'));
       return;
     }
     if (!mesh) {
@@ -58,7 +75,7 @@ export function createApp(
       return;
     }
     try {
-      const path = await mesh.meshPath(MODEL_ID);
+      const path = await mesh.meshPath(id);
       res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8');
       res.sendFile(path, err => {
         // For example the cached file was deleted or is locked. Answer JSON like every other mesh error.
@@ -76,6 +93,22 @@ export function createApp(
       res.status(status).json({ error: message });
     }
   });
+
+  // Booleans only: whether each part is ready, never a key.
+  app.get('/api/health', (_req, res) => {
+    const body: Health = {
+      bundle: bundleReady(),
+      sdkKey: has('MATTERPORT_SDK_KEY'),
+      matterport: has('MATTERPORT_API_KEY') && has('MATTERPORT_API_TOKEN'),
+      vexcel: has('VEXCEL_API_KEY'),
+      claude: has('CLAUDE_API'),
+      index: false,
+      ...health?.(),
+    };
+    res.json(body);
+  });
+
+  if (routers.length > 0) app.use('/api', express.json({ limit: '4kb' }), ...routers);
 
   // People open the address the server prints. Point them at the page instead of "Cannot GET /".
   app.get('/', (_req, res) => {

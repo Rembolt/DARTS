@@ -3,7 +3,8 @@ import request from 'supertest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp, MODEL_ID } from '../src/app.js';
+import { createApp } from '../src/app.js';
+import { DEMO_MODEL_ID } from '../src/shared/contract.js';
 import { loadEnv } from '../src/env.js';
 
 describe('GET /api/config', () => {
@@ -12,7 +13,35 @@ describe('GET /api/config', () => {
     const res = await request(app).get('/api/config');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ sdkKey: 'sdk123', modelId: 'Ki9YdfpNKum' });
-    expect(MODEL_ID).toBe('Ki9YdfpNKum');
+    expect(DEMO_MODEL_ID).toBe('Ki9YdfpNKum');
+  });
+
+  it('serves an allowed id', async () => {
+    const app = createApp({ MATTERPORT_SDK_KEY: 'k' }, { allowedIds: new Set([DEMO_MODEL_ID, 'aaaaaaaaaaa']) });
+    const res = await request(app).get('/api/config?m=aaaaaaaaaaa');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sdkKey: 'k', modelId: 'aaaaaaaaaaa' });
+  });
+
+  it('refuses an unknown id', async () => {
+    const app = createApp({ MATTERPORT_SDK_KEY: 'k' }, { allowedIds: new Set([DEMO_MODEL_ID, 'aaaaaaaaaaa']) });
+    const res = await request(app).get('/api/config?m=bbbbbbbbbbb');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('unknown_model');
+    expect(res.body.error).toBe('Not possible to load: this property is not in the catalogue.');
+    expect(res.body.retry).toBe(false);
+  });
+
+  it('refuses a malformed id', async () => {
+    const res = await request(createApp({ MATTERPORT_SDK_KEY: 'k' })).get('/api/config?m=../x');
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('unknown_model');
+  });
+
+  it('defaults to the demo house', async () => {
+    const app = createApp({ MATTERPORT_SDK_KEY: 'k' }, { allowedIds: new Set(['aaaaaaaaaaa']) });
+    const res = await request(app).get('/api/config');
+    expect(res.body.modelId).toBe(DEMO_MODEL_ID);
   });
 
   it('answers 500 with a named error when the SDK key is missing', async () => {

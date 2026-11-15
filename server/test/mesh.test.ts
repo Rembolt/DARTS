@@ -3,7 +3,8 @@ import request from 'supertest';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp, MODEL_ID } from '../src/app.js';
+import { createApp } from '../src/app.js';
+import { DEMO_MODEL_ID as MODEL_ID } from '../src/shared/contract.js';
 import { createMeshSource, MeshError, type MeshSource } from '../src/mesh.js';
 
 const ENV = { MATTERPORT_API_KEY: 'tokenid', MATTERPORT_API_TOKEN: 'supersecret' };
@@ -230,10 +231,28 @@ describe('GET /api/mesh/:id', () => {
     expect(res.headers['cache-control']).toBe('no-store');
   });
 
-  it('answers 404 for any other model', async () => {
+  it('answers 404 unknown_model for a malformed id', async () => {
     const res = await request(createApp({}, { mesh: fileSource() })).get('/api/mesh/abc');
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'Only model Ki9YdfpNKum is served' });
+    expect(res.body.code).toBe('unknown_model');
+  });
+
+  it('serves any allowed id and refuses others', async () => {
+    const asked: string[] = [];
+    const recording: MeshSource = {
+      meshPath: async id => {
+        asked.push(id);
+        return fileSource().meshPath(id);
+      },
+    };
+    const app = createApp({}, { mesh: recording, allowedIds: new Set([MODEL_ID, 'aaaaaaaaaaa']) });
+    const ok = await request(app).get('/api/mesh/aaaaaaaaaaa');
+    expect(ok.status).toBe(200);
+    expect(asked).toEqual(['aaaaaaaaaaa']);
+    const refused = await request(app).get('/api/mesh/bbbbbbbbbbb');
+    expect(refused.status).toBe(404);
+    expect(refused.body.code).toBe('unknown_model');
+    expect(asked).toEqual(['aaaaaaaaaaa']);
   });
 
   it('answers the error status and message of a failing source', async () => {
