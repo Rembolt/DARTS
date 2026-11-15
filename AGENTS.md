@@ -14,11 +14,14 @@ the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` ca
 sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
 The Blueprint button (or B) shows the house over the tour through the tour's own camera (`app/src/blueprint/`):
 Solid mode (default) draws the mesh as a white model with its edges, X-ray draws edges only; ceilings hide outside.
-The page UI is an overlay in `app/src/ui/` (Preact + signals, lucide icons, Hanken Grotesk font; all MIT/ISC/OFL): top bar, door and
-window pins projected onto the tour, speaker pins with a settings card, click-to-add (S key), sonar ripples and pulses in the blueprint, and the Jev chat bar (visible steps, suggestions the user applies or dismisses, mic button for the voice mode to come). Its state
-is `ui/store.ts`; `commands` there are the seams to the app. Doors and windows are demo data (`ui/mock.ts`) and the chat is a
-local stand-in (`ui/assistant.ts`) until the V2 scene state, Property Intelligence openings and the Jev relay land;
-speakers beyond the two MVP sources are preview only until the audio engine takes a source list.
+The page UI is an overlay in `app/src/ui/`, built to the rules in [app/src/ui/DESIGN.md](app/src/ui/DESIGN.md): Preact + signals,
+Radix popover/select/switch/tooltip and Sonner toasts through `preact/compat` (aliased in `vite.config.ts`), lucide icons,
+Hanken Grotesk. State is `ui/store.ts`; `commands` there are the seams to the app (`ask` for the agent, `voice` for speech).
+Pins hide behind walls via a line-of-sight worker (`ui/occlusion.ts`) and follow `ui/pins.ts`. Sound is shown two ways from
+the trace: the sonar in the blueprint (`blueprint/sonar.ts`) and the sound compass (`ui/SoundCompass.tsx`). Doors and windows
+are demo data (`ui/mock.ts`), the chat is a local stand-in (`ui/localAgent.ts`), and speakers beyond the two MVP sources
+are preview only until the audio engine takes a source list. Radix Slider does not work under preact/compat (no thumb):
+use the native range input.
 Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it, except where

@@ -43,6 +43,7 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
   scene.add(lines);
   const paths = createPathsLayer();
   scene.add(paths.object);
+  if (import.meta.env.DEV) (globalThis as unknown as { __scene: unknown }).__scene = { scene, camera, paths };
 
   // Solid mode: the house as a white model. Pushed back a little in depth so its own edges draw cleanly on top, and
   // drawn from both sides (the scan's winding is not reliable from outside). It hides the lines behind walls.

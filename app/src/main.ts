@@ -15,6 +15,7 @@ import { commands, ui, addSpeaker, setOpenings, setSpeakers, type Speaker } from
 import { localAgent } from './ui/localAgent';
 import { mockOpenings } from './ui/mock';
 import { listenForPlacement } from './ui/placement';
+import { createOcclusion, type Occlusion } from './ui/occlusion';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
 const iframe = document.getElementById('viewer') as HTMLIFrameElement;
@@ -57,6 +58,7 @@ showToggle();
 
 // ---- Listener, traces, audio and reverb (mvp-design.md 2 flow, 5.5, 5.6, 6) ----
 
+let occlusion: Occlusion | null = null; // line of sight for the overlay's pins
 let sim: SimClient | null = null; // set once the worker has the mesh
 let sources: { id: string; position: Vec3 }[] | null = null; // placed from the tour's first inside position
 let listener: Vec3 | null = null; // last position inside the house
@@ -120,6 +122,8 @@ function onWorkerMessage(msg: FromWorker): void {
     case 'trace': {
       audio?.applySimResult(msg.sources);
       if (sources) {
+        const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
+        ui.sound.value = { listener: msg.listener, sources: msg.sources, positions: sources.map(s => s.position), echoTime: known ?? msg.echoTimeEstimate };
         blueprint.setTrace({
           listener: msg.listener,
           sources: sources.map(s => ({ position: s.position })),
@@ -153,6 +157,20 @@ function onWorkerMessage(msg: FromWorker): void {
     }
   }
 }
+
+/** Ask which pins the camera can see. Inside only: dollhouse and floor plan are cutaways, so nothing hides there. */
+function checkSight(): void {
+  const pose = latestPose;
+  if (!occlusion || !pose) return;
+  if (!isInside(pose.mode)) {
+    if (ui.hidden.value.size) ui.hidden.value = new Map();
+    return;
+  }
+  const items = [...ui.openings.value, ...ui.speakers.value];
+  occlusion.query([pose.position.x, pose.position.y, pose.position.z], items.map(i => i.id), items.map(i => i.position));
+}
+ui.openings.subscribe(() => checkSight());
+ui.speakers.subscribe(() => checkSight());
 
 function showAudio(state: 'off' | 'starting' | 'on'): void {
   ui.audio.value = state;
@@ -229,7 +247,9 @@ async function startSimulation(modelId: string): Promise<void> {
     enterRoom();
     ui.sim.value = formatSimReady(ready);
     blueprint.setLines(ready.lines);
+    occlusion = createOcclusion(ready.mesh, hidden => (ui.hidden.value = hidden));
     blueprint.setMesh(ready.mesh);
+    checkSight();
     blueprintLines = ready.lines;
     toggle.ready();
     showToggle();
@@ -279,6 +299,7 @@ async function start(): Promise<void> {
     if (import.meta.env.DEV) (window as unknown as { __pose: string }).__pose = formatPose(pose);
     blueprint.setPose(pose);
     latestPose = pose;
+    checkSight();
     // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
     if (!isInside(pose.mode)) return;
     listener = [pose.position.x, pose.position.y, pose.position.z];
@@ -299,8 +320,10 @@ async function start(): Promise<void> {
 
   // Dev helper (mvp-design.md 8): press P to log the point under the cursor, to paste as a source position.
   let pointed: Vec3 | null = null;
+  let pointedNormal: Vec3 = [0, 1, 0];
   sdk.Pointer.intersection.subscribe(hit => {
     pointed = [hit.position.x, hit.position.y, hit.position.z];
+    if (hit.normal) pointedNormal = [hit.normal.x, hit.normal.y, hit.normal.z];
   });
   const logPoint = (event: KeyboardEvent) => {
     const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
@@ -325,7 +348,9 @@ async function start(): Promise<void> {
       () => ui.placing.value && pointed !== null,
       () => {
         if (!pointed) return;
-        addSpeaker([pointed[0], pointed[1] + 0.3, pointed[2]]);
+        // 0.3 m off the surface along its facing direction, so the speaker never sits inside the wall (v2 5.4).
+        const n = pointedNormal;
+        addSpeaker([pointed[0] + n[0] * 0.3, pointed[1] + n[1] * 0.3, pointed[2] + n[2] * 0.3]);
         ui.placing.value = false;
       },
     );

@@ -16,7 +16,7 @@ export type MpSdk = {
   /** What is under the cursor in the tour; the P key logs it to pick a source position. */
   Pointer: {
     intersection: {
-      subscribe(cb: (hit: { position: { x: number; y: number; z: number }; object: string }) => void): { cancel(): void };
+      subscribe(cb: (hit: { position: { x: number; y: number; z: number }; normal?: { x: number; y: number; z: number }; object: string }) => void): { cancel(): void };
     };
   };
   App: {

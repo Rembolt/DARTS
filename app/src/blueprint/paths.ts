@@ -8,17 +8,13 @@ import {
   LineBasicMaterial,
   LineDashedMaterial,
   LineSegments,
-  CanvasTexture,
-  DoubleSide,
   Mesh,
   MeshBasicMaterial,
-  Points,
-  PointsMaterial,
-  PlaneGeometry,
   SphereGeometry,
   Color,
 } from 'three';
 import type { Vec3 } from '../sim/types';
+import { createSonar } from './sonar';
 
 /** The look of the paths layer. Will move to `config.ts` (next to `BLUEPRINT`) later. */
 export const PATHS_STYLE = {
@@ -42,16 +38,8 @@ export const PATHS_STYLE = {
    */
   markerRadius: 0.12,
   markerAlpha: 0.9,
-  /** Sonar: rings that leave each source, and pulses that travel its paths to the listener. */
-  ringsPerSource: 2,
-  ringPeriod: 3.2, // seconds for one ripple to travel out and fade
-  ringRadius: 5, // metres at the end of a ripple's life
-  ringAlpha: 0.9,
-  /** Opacity of the paths themselves: a soft trail under the pulses. */
-  trailOpacity: 0.4,
-  pulsesPerPath: 3,
-  pulseSpeed: 4.5, // metres per second as drawn (the real speed of sound would be invisible)
-  pulseSize: 0.4, // metres
+  /** Opacity of the paths themselves: a faint trail under the sonar pulses (sonar.ts). */
+  trailOpacity: 0.22,
 };
 
 export type TraceOverlay = {
@@ -122,7 +110,7 @@ export function pointAlong(points: Float32Array | number[], distance: number): V
 }
 
 /** Each path of a trace as one polyline running from its source to the listener, with its colour index and length. */
-export type Route = { points: Float32Array; length: number; source: number };
+export type Route = { points: Float32Array; length: number; source: number; /** 0..1, from the path's strength rank */ strength: number };
 
 export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
   const routes: Route[] = [];
@@ -132,7 +120,8 @@ export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
       length += Math.hypot(pts[i * 3 + 3] - pts[i * 3], pts[i * 3 + 4] - pts[i * 3 + 1], pts[i * 3 + 5] - pts[i * 3 + 2]);
     return length;
   };
-  for (const g of groupPaths(trace.paths, trace.pathSource)) {
+  const groups = groupPaths(trace.paths, trace.pathSource);
+  groups.forEach((g, rank) => {
     // Segments run listener → source; sound travels the other way.
     const pts: number[] = [];
     for (let s = g.firstSegment + g.segmentCount - 1; s >= g.firstSegment; s--) {
@@ -141,13 +130,13 @@ export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
       pts.push(trace.paths[o], trace.paths[o + 1], trace.paths[o + 2]);
     }
     const length = measure(pts);
-    if (length > 0.01) routes.push({ points: Float32Array.from(pts), length, source: g.source });
-  }
+    if (length > 0.01) routes.push({ points: Float32Array.from(pts), length, source: g.source, strength: rankAlpha(rank, groups.length, style) });
+  });
   const [lx, ly, lz] = trace.listener;
   trace.sources.forEach((src, i) => {
     const d = Math.hypot(src.position[0] - lx, src.position[1] - ly, src.position[2] - lz);
     if (d <= style.listenerGap) return;
-    routes.push({ points: Float32Array.from([...src.position, lx, ly, lz]), length: d, source: i });
+    routes.push({ points: Float32Array.from([...src.position, lx, ly, lz]), length: d, source: i, strength: 1 });
   });
   return routes;
 }
@@ -245,45 +234,6 @@ export type PathsLayer = {
   dispose(): void;
 };
 
-let glowTexture: CanvasTexture | null = null;
-let rippleTexture: CanvasTexture | null = null;
-/** A soft ripple: clear in the middle, a glow building to a thin bright edge, then nothing. Tinted per source. */
-function ripple(): CanvasTexture | null {
-  if (rippleTexture || typeof document === 'undefined') return rippleTexture;
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  grad.addColorStop(0, 'rgba(255,255,255,0)');
-  grad.addColorStop(0.55, 'rgba(255,255,255,0.04)');
-  grad.addColorStop(0.9, 'rgba(255,255,255,0.35)');
-  grad.addColorStop(0.955, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.985, 'rgba(255,255,255,0.15)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 256);
-  rippleTexture = new CanvasTexture(c);
-  return rippleTexture;
-}
-
-/** A soft round dot for the pulses; null where there is no canvas (tests). */
-function glow(): CanvasTexture | null {
-  if (glowTexture || typeof document === 'undefined') return glowTexture;
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.8)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  glowTexture = new CanvasTexture(c);
-  return glowTexture;
-}
-
 export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
   // Drawn over the mesh lines, ignoring depth: the paths run through walls, and the point is to see them.
   const overlay = { transparent: true, depthTest: false, depthWrite: false, vertexColors: true } as const;
@@ -304,31 +254,10 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
   object.visible = false;
   directLines.visible = false; // the pulses along each direct route say the same, more cleanly
 
-  // Sonar rings: flat on the floor plane of each source, drawn through walls like everything in this layer.
-  const ringGeometry = new PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
-  const rippleMap = ripple();
-  const rings = new Group();
-  rings.renderOrder = 0;
-  object.add(rings);
-  let sourcePositions: Vec3[] = [];
-
-  // Pulses: small glowing dots that run from each source along its routes to the listener.
-  const pulseMaterial = new PointsMaterial({
-    size: style.pulseSize,
-    sizeAttenuation: true,
-    vertexColors: true,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    map: glow(),
-    alphaTest: 0.01,
-  });
-  const pulses = new Points(new BufferGeometry(), pulseMaterial);
-  pulses.frustumCulled = false;
-  pulses.renderOrder = 4;
-  object.add(pulses);
-  let routes: Route[] = [];
-  let pulseSource = new Uint8Array(0);
+  // The animated sound: wavefronts, pulses and bounce flashes (sonar.ts).
+  const sonar = createSonar();
+  object.add(sonar.object);
+  let animatedSources = 0;
 
   /** Place one sphere per source; extra spheres from an earlier trace are hidden, not freed. */
   const placeMarkers = (positions: Float32Array, colors: Float32Array) => {
@@ -362,67 +291,22 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
     target.geometry = g;
   };
 
-  const syncRings = (count: number) => {
-    const want = count * style.ringsPerSource;
-    while (rings.children.length < want) {
-      const m = new Mesh(ringGeometry, new MeshBasicMaterial({ map: rippleMap, transparent: true, depthTest: false, depthWrite: false, side: DoubleSide }));
-      m.frustumCulled = false;
-      rings.add(m);
-    }
-    rings.children.forEach((c, i) => (c.visible = i < want));
-  };
-
   return {
     object,
     get animated() {
-      return object.visible && sourcePositions.length > 0;
+      return object.visible && animatedSources > 0;
     },
     tick(seconds) {
-      sourcePositions.forEach((pos, si) => {
-        for (let k = 0; k < style.ringsPerSource; k++) {
-          const ring = rings.children[si * style.ringsPerSource + k] as Mesh<PlaneGeometry, MeshBasicMaterial>;
-          const phase = (seconds / style.ringPeriod + k / style.ringsPerSource + si * 0.31) % 1;
-          const r = 0.2 + phase * style.ringRadius;
-          ring.position.set(pos[0], pos[1] - 0.25, pos[2]);
-          ring.scale.set(r, r, r);
-          ring.material.color.set(style.sourceColors[si % style.sourceColors.length]);
-          ring.material.opacity = style.ringAlpha * Math.min(1, phase * 8) * Math.pow(1 - phase, 1.4);
-        }
-      });
-      const attr = pulses.geometry.getAttribute('position') as BufferAttribute | undefined;
-      if (!attr) return;
-      const out = attr.array as Float32Array;
-      let n = 0;
-      routes.forEach(route => {
-        for (let k = 0; k < style.pulsesPerPath; k++) {
-          const phase = (seconds * style.pulseSpeed / Math.max(route.length, 1) + k / style.pulsesPerPath + route.length * 0.07) % 1;
-          out.set(pointAlong(route.points, phase * route.length), n * 3);
-          n++;
-        }
-      });
-      attr.needsUpdate = true;
+      sonar.tick(seconds);
     },
     set(trace) {
       if (!trace) {
         object.visible = false;
-        sourcePositions = [];
+        animatedSources = 0;
         return;
       }
-      sourcePositions = trace.sources.map(s => s.position);
-      syncRings(sourcePositions.length);
-      routes = buildRoutes(trace, style);
-      const count = routes.length * style.pulsesPerPath;
-      const colors = new Float32Array(count * 3);
-      let n = 0;
-      for (const route of routes) {
-        const [r, g, b] = sourceRgb(route.source, style);
-        for (let k = 0; k < style.pulsesPerPath; k++) colors.set([r, g, b], n++ * 3);
-      }
-      const geometry = new BufferGeometry();
-      geometry.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3));
-      geometry.setAttribute('color', new BufferAttribute(colors, 3));
-      pulses.geometry.dispose();
-      pulses.geometry = geometry;
+      animatedSources = trace.sources.length;
+      sonar.set(buildRoutes(trace, style), trace.sources.map(src => src.position), style.sourceColors);
       const a = buildTraceArrays(trace, style);
       fill(pathLines, a.pathPositions, a.pathColors, 4);
       fill(directLines, a.directPositions, a.directColors, 4);
@@ -439,10 +323,7 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
       for (const o of [pathLines, directLines]) o.geometry.dispose();
       pathMaterial.dispose();
       directMaterial.dispose();
-      pulses.geometry.dispose();
-      pulseMaterial.dispose();
-      ringGeometry.dispose();
-      for (const c of rings.children) ((c as Mesh).material as MeshBasicMaterial).dispose();
+      sonar.dispose();
       sphere.dispose();
       for (const m of markerMaterials) m.dispose();
     },

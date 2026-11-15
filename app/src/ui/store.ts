@@ -2,7 +2,8 @@
 // overlay reads it. The V2 scene state (v2-design.md section 3) will replace the speaker and opening lists; the
 // `commands` hooks are where the overlay calls back into the app.
 import { signal } from '@preact/signals';
-import type { Vec3 } from '../sim/types';
+import { toast } from 'sonner';
+import type { Bands, SourceResult, Vec3 } from '../sim/types';
 import type { Pose } from '../viewer';
 
 export type SoundKind = 'point' | 'ambient' | 'stereo';
@@ -64,6 +65,10 @@ export const ui = {
   /** True when the opening list is stand-in data, not read from Property Intelligence yet. */
   openingsAreDemo: signal(true),
   selection: signal<Selection>(null),
+  /** The last trace, for the sound compass. `positions` matches `sources` by index. */
+  sound: signal<{ listener: Vec3; sources: SourceResult[]; positions: Vec3[]; echoTime: Bands } | null>(null),
+  /** Pin id → behind a wall from where the camera is. Unknown ids count as visible. */
+  hidden: signal<Map<string, boolean>>(new Map()),
   placing: signal(false),
 
   chat: signal<ChatMessage[]>([]),
@@ -142,6 +147,8 @@ export function resolveProposal(id: number, accept: boolean): void {
   pendingApply.delete(id);
   ui.chat.value = ui.chat.value.map(m => (m.id === id && m.kind === 'proposal' && m.status === 'pending' ? { ...m, status: accept ? 'applied' : 'dismissed' } : m));
   if (accept) apply?.();
+  const m = ui.chat.value.find(x => x.id === id);
+  if (m?.kind === 'proposal') toast(accept ? `Applied: ${m.title.toLowerCase()}` : 'Suggestion dismissed', { description: accept ? m.changes.join(', ') : undefined });
 }
 
 /** Ids the agent's open suggestions would change, for the pins to light up. */

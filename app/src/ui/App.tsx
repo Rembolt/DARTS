@@ -1,8 +1,9 @@
 import { useEffect } from 'preact/hooks';
+import { Toaster } from 'sonner';
 import { Chat } from './Chat';
 import { Dock } from './Dock';
 import { Hotspots } from './Hotspots';
-import { Inspector } from './Inspector';
+import { SoundCompass } from './SoundCompass';
 import { ui } from './store';
 
 export function App() {
@@ -20,9 +21,15 @@ export function App() {
   return (
     <>
       <Hotspots />
-      <Inspector />
+      <SoundCompass />
       <Dock />
       <Chat />
+      <Toaster
+        position="top-center"
+        offset={96}
+        mobileOffset={{ top: 64 }}
+        toastOptions={{ unstyled: true, classNames: { toast: 'toast card', title: 'toast-title', description: 'toast-desc' } }}
+      />
     </>
   );
 }
