@@ -1,4 +1,5 @@
-import { checkBundle, loadMesh, loadServerConfig } from '../api';
+import { notPossible, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
+import { checkBundle, loadMesh, loadServerConfig, UNREACHABLE, type ServerConfig } from '../api';
 import { createModeSwitch } from '../blueprint/mode';
 import { bindShortcut, createToggle } from '../blueprint/toggle';
 import { createBlueprint } from '../blueprint/view';
@@ -10,13 +11,57 @@ import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
 import type { FromWorker, Vec3 } from '../sim/types';
-import { connectViewer, formatPose, viewerUrl, type Pose } from '../viewer';
+import { connectViewer, formatPose, viewerUrl, type MpSdk, type Pose } from '../viewer';
+import { browserSupport, isNotPossibleError, loadStatus, meshProblem, withTimeout } from './checks';
+import { showFailure } from './failure';
+
+const VIEWER_TIMEOUT_MS = 30_000;
+const WORKER_LOAD_TIMEOUT_MS = 60_000;
+/** Spec 8.3. No contract code of its own; shown as a viewer failure whose "Try again" reloads the page. */
+const CONTEXT_LOST: NotPossible = { code: 'viewer_failed', message: 'The 3D view stopped. Reload to continue.', retry: true };
+
+/**
+ * A failure from one of our own steps as a `NotPossible`: a `{ reason }` as it is, our server being down as the
+ * unreachable reason, and anything else as `code`'s spec sentence (the detail goes to the console only).
+ */
+function reasonOf(err: unknown, code: NotPossibleCode): NotPossible {
+  if (isNotPossibleError(err)) return err.reason;
+  const detail = err instanceof Error ? err.message : String(err);
+  if (detail === UNREACHABLE) return { code: 'matterport_unreachable', message: UNREACHABLE, retry: true };
+  console.warn(`${code}:`, detail);
+  return notPossible(code);
+}
 
 /**
  * Start the tour of one property: the viewer, the sim worker with its mesh, the audio and the blueprint.
  * Everything uses `modelId`; nothing reads the page before this is called.
  */
 export function startTour(modelId: string): void {
+  const tourRoot = document.getElementById('tour')!;
+  let failed = false;
+  const cleanups: (() => void)[] = [];
+
+  /** Stop everything and show the reason instead of the tour: never a half-loaded tour (spec 4.4, 8.1). */
+  function fail(reason: NotPossible): void {
+    if (failed) return;
+    failed = true;
+    for (const cleanup of cleanups.splice(0)) {
+      try {
+        cleanup();
+      } catch (err) {
+        console.warn('cleanup failed:', err);
+      }
+    }
+    showFailure(tourRoot, reason, { retry: () => location.reload() });
+  }
+
+  // Before anything touches WebGL, a worker or audio.
+  const unsupported = browserSupport(window as unknown as Parameters<typeof browserSupport>[0]);
+  if (unsupported) {
+    fail(unsupported);
+    return;
+  }
+
   const status = document.getElementById('status')!;
   const poseLine = document.getElementById('pose')!;
   const simLine = document.getElementById('sim')!;
@@ -28,6 +73,7 @@ export function startTour(modelId: string): void {
   const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
 
   const blueprint = createBlueprint(canvas);
+  canvas.addEventListener('webglcontextlost', () => fail(CONTEXT_LOST));
   let latestPose: Pose | null = null;
   let blueprintLines: Float32Array | null = null;
   const toggle = createToggle();
@@ -65,6 +111,7 @@ export function startTour(modelId: string): void {
   // ---- Listener, traces, audio and reverb (mvp-design.md 2 flow, 5.5, 5.6, 6) ----
 
   let sim: SimClient | null = null; // set once the worker has the mesh
+  let viewerReady = false;
   let sources: { id: string; position: Vec3 }[] | null = null; // placed from the tour's first inside position
   let listener: Vec3 | null = null; // last position inside the house
   let roomId: string | null = null; // last room from Room.current
@@ -75,6 +122,27 @@ export function startTour(modelId: string): void {
   const rooms = new ReverbScheduler();
   let estimateRoom: string | null | undefined; // room whose reverb estimate is applied; undefined: none yet
   let debugLog = false; // dev: log every reverb swap and trace with a timestamp (window.__audio.log(true))
+
+  cleanups.push(() => {
+    iframe.src = 'about:blank';
+    sim?.terminate();
+    sim = null;
+    reverb?.dispose();
+    reverb = null;
+    const old = audio;
+    audio = null;
+    if (old) void old.stop();
+  });
+
+  /** The status line: the tour's state, then any notices (sounds skipped, surroundings). */
+  let statusText = 'Loading…';
+  const notices = new Map<string, string>();
+  function showStatus(text?: string): void {
+    if (text !== undefined) statusText = text;
+    const line = [statusText, ...notices.values()].join(' · ');
+    status.textContent = line;
+    status.title = line;
+  }
 
   /** Change the reverb. Swapping a convolver's sound can drop the reverb for an instant, so swaps are kept rare. */
   function setEchoTime(echoTime: [number, number, number], why: string): void {
@@ -155,8 +223,9 @@ export function startTour(modelId: string): void {
     }
   }
 
+  /** Audio waits for the whole tour: the viewer and the simulation (no audio without the viewer, spec 8.1). */
   function showAudio(state: 'off' | 'starting' | 'on'): void {
-    audioButton.disabled = state === 'starting';
+    audioButton.disabled = state === 'starting' || !viewerReady || !sim;
     audioButton.textContent = state === 'on' ? 'Stop audio' : state === 'starting' ? 'Starting…' : 'Start audio';
     audioButton.setAttribute('aria-pressed', String(state === 'on'));
   }
@@ -175,6 +244,10 @@ export function startTour(modelId: string): void {
     showAudio('starting');
     createAudioEngine()
       .then(engine => {
+        if (failed) {
+          void engine.stop();
+          return;
+        }
         audio = engine;
         reverb = new Reverb(engine.context);
         engine.connectReverb(reverb.input);
@@ -190,8 +263,10 @@ export function startTour(modelId: string): void {
         console.info('audio started', { standIns: engine.standIns });
       })
       .catch(err => {
-        showAudio('off');
-        showError(err);
+        // Spec 4.4: an audio context that won't start means this browser can't run 3D audio.
+        const base = notPossible('browser_unsupported');
+        console.warn('audio did not start:', err);
+        fail({ ...base, message: `${base.message} The audio could not start.` });
       });
   });
 
@@ -214,21 +289,31 @@ export function startTour(modelId: string): void {
     };
   }
 
-  function showError(err: unknown): void {
-    const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown error';
-    status.textContent = message;
-    status.title = message;
-  }
-
-  /** Download the mesh and load it in the worker. Runs beside the tour; it never blocks or breaks it. */
+  /** Download the mesh and load it in the worker, beside the viewer. Any failure stops the whole tour. */
   async function startSimulation(modelId: string): Promise<void> {
     simLine.textContent = 'Loading mesh…';
+    let obj: ArrayBuffer;
     try {
-      const obj = await loadMesh(modelId);
-      const client = startSim();
-      const ready = await client.load(obj, simConfig());
+      obj = await loadMesh(modelId);
+    } catch (err) {
+      fail(reasonOf(err, 'mesh_failed'));
+      return;
+    }
+    if (failed) return;
+    const client = startSim();
+    cleanups.push(() => client.terminate());
+    try {
+      const ready = await withTimeout(client.load(obj, simConfig()), WORKER_LOAD_TIMEOUT_MS, notPossible('mesh_unusable'));
+      if (failed) return;
+      const problem = meshProblem(ready);
+      if (problem) {
+        console.warn('mesh unusable:', ready.triangles, 'triangles');
+        fail(problem);
+        return;
+      }
       client.worker.addEventListener('message', event => onWorkerMessage((event as MessageEvent<FromWorker>).data));
       sim = client;
+      showAudio(audio ? 'on' : 'off');
       traceListener();
       enterRoom();
       simLine.textContent = formatSimReady(ready);
@@ -246,38 +331,61 @@ export function startTour(modelId: string): void {
         boundsMax: ready.boundsMax,
       });
     } catch (err) {
-      const message = `Simulation failed to load: ${err instanceof Error ? err.message : String(err)}`;
-      simLine.textContent = message;
-      simLine.title = message;
-      toggle.failed(err instanceof Error ? err.message : String(err));
-      showToggle();
+      fail(reasonOf(err, 'mesh_unusable'));
     }
   }
 
+  // Order (spec 4.3, 4.4): browser (above), the property's status, config, Bundle, then viewer and simulation.
   async function start(): Promise<void> {
-    const config = await loadServerConfig(modelId).catch(showError);
-    if (!config) return;
+    showAudio('off');
+    showStatus('Checking this property…');
+    let name: string | null = null;
+    try {
+      const property = await loadStatus(modelId);
+      if (!property.canEnter) {
+        fail(property.reason ?? notPossible('model_not_found'));
+        return;
+      }
+      name = property.name;
+    } catch (err) {
+      fail(reasonOf(err, 'matterport_unreachable'));
+      return;
+    }
+
+    let config: ServerConfig;
+    try {
+      config = await loadServerConfig(modelId);
+    } catch (err) {
+      fail(reasonOf(err, 'server_not_configured'));
+      return;
+    }
+    try {
+      await checkBundle();
+    } catch (err) {
+      fail(reasonOf(err, 'bundle_missing'));
+      return;
+    }
+    if (failed) return;
 
     // The mesh is the one for the model this tour was started with, never a default.
     void startSimulation(modelId);
 
-    try {
-      await checkBundle();
-    } catch (err) {
-      showError(err);
-      return;
-    }
-
-    status.textContent = 'Loading tour…';
+    showStatus('Loading tour…');
     // Never write the SDK key to the page text or the console. It appears only in this src.
     iframe.src = viewerUrl(config);
 
-    const sdk = await connectViewer(iframe, message => {
-      status.textContent = message;
-    }).catch(showError);
-    if (!sdk) return;
+    let sdk: MpSdk;
+    try {
+      sdk = await withTimeout(connectViewer(iframe, message => showStatus(message)), VIEWER_TIMEOUT_MS, notPossible('viewer_failed'));
+    } catch (err) {
+      fail(reasonOf(err, 'viewer_failed'));
+      return;
+    }
+    if (failed) return;
+    viewerReady = true;
+    showAudio(audio ? 'on' : 'off');
 
-    status.textContent = `Tour playing: model ${config.modelId}`;
+    showStatus(`Tour playing: ${name ?? 'this property'}`);
     // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
     if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
     sdk.Camera.pose.subscribe(pose => {
@@ -323,5 +431,5 @@ export function startTour(modelId: string): void {
     }
   }
 
-  start().catch(showError);
+  start().catch(err => fail(reasonOf(err, 'viewer_failed')));
 }
