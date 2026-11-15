@@ -224,9 +224,9 @@ describe('setOpening', () => {
   it('closes all windows in a room and loads the layer first', async () => {
     const { calls, seen, store, actions } = setup();
     const r = await actions.setOpening({ room: 'kitchen', type: 'window', state: 'closed' });
-    expect(r).toMatchObject({ ok: true, value: { changed: ['w1'] }, before: BEFORE, after: AFTER });
+    expect(r).toMatchObject({ ok: true, value: { changed: ['w1', 'w2'] }, before: BEFORE, after: AFTER });
     expect(seen.openingsLoaded).toEqual([true, true]);
-    expect(store.get().openings).toEqual({ loaded: true, closed: { w1: true } });
+    expect(store.get().openings).toEqual({ loaded: true, closed: { w1: true, w2: true } });
     expect(calls).toEqual(['openingsChanged', 'openingsChanged', 'clearReverb', 'retrace', 'measure']);
   });
 
@@ -238,7 +238,7 @@ describe('setOpening', () => {
     expect(r).toMatchObject({ ok: true, value: { changed: ['d1'] } }); // w1 was already closed
     expect(calls[0]).toBe('openingsChanged'); // loaded already: no second load
     expect(calls.filter(c => c === 'openingsChanged')).toHaveLength(1);
-    expect(store.get().openings.closed).toEqual({ w1: true, d1: true });
+    expect(store.get().openings.closed).toEqual({ w1: true, w2: true, d1: true });
   });
 
   it('opens one opening by id', async () => {
@@ -249,11 +249,11 @@ describe('setOpening', () => {
     expect(store.get().openings.closed).toEqual({});
   });
 
-  it('refuses an unknown opening, a gap, and one already closed in the mesh', async () => {
+  it('refuses an unknown opening and a gap; one closed in the scan can still be changed (the page trims its sound)', async () => {
     const { actions } = setup();
     expect(await actions.setOpening({ id: 'x9', state: 'closed' })).toEqual({ ok: false, error: 'Unknown opening: x9.' });
     expect((await actions.setOpening({ id: 'g1', state: 'closed' })).ok).toBe(false);
-    expect((await actions.setOpening({ id: 'w2', state: 'closed' })).ok).toBe(false);
+    expect((await actions.setOpening({ id: 'w2', state: 'closed' })).ok).toBe(true);
     expect(await actions.setOpening({ room: 'garage', type: 'door', state: 'closed' })).toEqual({ ok: false, error: 'Unknown room: garage.' });
     expect(await actions.setOpening({ room: 'bedroom', type: 'door', state: 'closed' })).toEqual({ ok: false, error: 'No doors to change in Bedroom.' });
   });

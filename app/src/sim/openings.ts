@@ -28,19 +28,68 @@ export type Panels = {
   /** Per panel triangle, in the panel index's order: which opening. */
   panelOf: Uint16Array;
   meshClosed: boolean[];
-  /** Per opening: closed and not already closed in the mesh, so rays hit it. */
+  /** Per opening: closed, so rays hit its panel. */
   active: boolean[];
+  /**
+   * The openings the scan filled (glass, a closed door leaf): their box is cut out of the main mesh for sound, and
+   * their panel stands in for it, so open and closed is the person's choice there too. Without this an opening the
+   * scan closed stays shut for sound however it is set.
+   */
+  carved: Carve[];
   anyActive: boolean;
   /** Per opening: its material (glass or door), resolved like the main mesh's surfaces. */
   surfaces: ResolvedSurface[];
 };
+
+/** An opening's box, for `carvedAt`. */
+export type Carve = { c0: Vec3; u: Vec3; v: Vec3; uu: number; vv: number; centre: Vec3; normal: Vec3; depth: number };
+
+/** How far either side of the opening's middle plane a scanned surface still counts as filling it, metres. */
+const CARVE_MARGIN = 0.15;
+/** Kept off the opening's own edges, as a fraction of its width and height: the frame and the wall beside it stay. */
+const CARVE_INSET = 0.03;
+
+export function carveOf(o: Pick<OpeningGeom, 'corners' | 'thickness'>): Carve {
+  const { centre, normal } = frame(o);
+  const [c0, c1, , c3] = o.corners;
+  const u = sub(c1, c0), v = sub(c3, c0);
+  const depth = Math.max(Number.isFinite(o.thickness) ? o.thickness : 0, MIN_PANEL_DEPTH) / 2 + CARVE_MARGIN;
+  return { c0: [...c0] as Vec3, u, v, uu: dot(u, u), vv: dot(v, v), centre, normal, depth };
+}
+
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+const rel: Vec3 = [0, 0, 0];
+
+/** True when point `p` lies inside an opening the scan filled: a main-mesh hit there is the scanned glass or leaf, not wall. */
+export function carvedAt(state: SimState, p: Vec3): boolean {
+  const carved = state.panels?.carved;
+  return !!carved && carved.length > 0 && insideAny(carved, p);
+}
+
+/** True when `p` is inside one of the boxes. Pure, so the blueprint cuts the same holes the sound goes through. */
+export function insideAny(carved: readonly Carve[], p: ArrayLike<number>): boolean {
+  for (const c of carved) {
+    rel[0] = p[0] - c.centre[0]; rel[1] = p[1] - c.centre[1]; rel[2] = p[2] - c.centre[2];
+    if (Math.abs(dot(rel, c.normal)) > c.depth) continue;
+    rel[0] = p[0] - c.c0[0]; rel[1] = p[1] - c.c0[1]; rel[2] = p[2] - c.c0[2];
+    const s = dot(rel, c.u) / c.uu, t = dot(rel, c.v) / c.vv;
+    if (s > CARVE_INSET && s < 1 - CARVE_INSET && t > CARVE_INSET && t < 1 - CARVE_INSET) return true;
+  }
+  return false;
+}
+
+/** True when the scan filled any opening: then every main-mesh hit is checked with `carvedAt`. */
+export const hasCarved = (state: SimState): boolean => (state.panels?.carved.length ?? 0) > 0;
 
 function sub(a: Vec3, b: Vec3): Vec3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 
 /** Centre and unit normal of an opening's quad. Throws for a quad with no area. */
-function frame(o: OpeningGeom): { centre: Vec3; normal: Vec3 } {
+function frame(o: Pick<OpeningGeom, 'corners'> & { id?: string }): { centre: Vec3; normal: Vec3 } {
   const [c0, c1, , c3] = o.corners;
   const u = sub(c1, c0), v = sub(c3, c0);
   const n: Vec3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
@@ -94,13 +143,66 @@ function check(openings: OpeningGeom[]): void {
   }
 }
 
-/** True when the main mesh already fills the opening: a ray through its centre hits a surface within the wall. */
-function closedInMesh(state: SimState, o: OpeningGeom): boolean {
-  const { centre, normal } = frame(o);
+/** Samples across an opening (columns × rows) for `fillOf`. */
+const FILL_COLS = 5, FILL_ROWS = 5;
+/** Above this share of samples blocked, the scan shows the opening shut. */
+const SHUT = 0.5;
+/** A filled opening is looked for a real hole this far along its wall, either way, metres. */
+const SNAP_MAX = 0.8;
+const SNAP_STEP = 0.1;
+
+const unit = (a: Vec3): Vec3 => {
+  const l = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+};
+
+/**
+ * The share of rays across the opening (slid `shift` metres along its wall) that hit the scan within the wall's
+ * depth: 0 is a clean hole, 1 a filled one (glass, a closed leaf, or no hole there at all).
+ */
+function fillOf(state: SimState, o: Pick<OpeningGeom, 'corners' | 'thickness'>, shift = 0): number {
+  const { normal } = frame(o);
+  const [c0, c1, , c3] = o.corners;
+  const u = sub(c1, c0), v = sub(c3, c0), along = unit(u);
   const t = Math.max(Number.isFinite(o.thickness) ? o.thickness : 0, 0);
   const back = t / 2 + CLOSED_MARGIN;
-  const start: Vec3 = [centre[0] - normal[0] * back, centre[1] - normal[1] * back, centre[2] - normal[2] * back];
-  return firstHit(state.index, start, normal, t + 2 * CLOSED_MARGIN) !== null;
+  let hits = 0;
+  for (let i = 1; i <= FILL_COLS; i++) {
+    for (let j = 1; j <= FILL_ROWS; j++) {
+      const s = i / (FILL_COLS + 1), r = j / (FILL_ROWS + 1);
+      const start: Vec3 = [0, 1, 2].map(k => c0[k] + u[k] * s + v[k] * r + along[k] * shift - normal[k] * back) as Vec3;
+      if (firstHit(state.index, start, normal, t + 2 * CLOSED_MARGIN)) hits++;
+    }
+  }
+  return hits / (FILL_COLS * FILL_ROWS);
+}
+
+const moveBy = (o: { corners: [Vec3, Vec3, Vec3, Vec3] }, d: Vec3): [Vec3, Vec3, Vec3, Vec3] =>
+  o.corners.map(c => [c[0] + d[0], c[1] + d[1], c[2] + d[2]]) as [Vec3, Vec3, Vec3, Vec3];
+
+/**
+ * A filled opening slid along its wall onto the scan's real hole, when the floor plan has it a little off: the
+ * nearest shift (up to `SNAP_MAX`) where the opening's whole span is clear, and where no other opening already is.
+ * Null when it stays: a hole that is open there already, or glass with no hole near it.
+ */
+function snap(state: SimState, o: { id: string; corners: [Vec3, Vec3, Vec3, Vec3]; thickness: number }, all: { id: string; corners: [Vec3, Vec3, Vec3, Vec3] }[]): [Vec3, Vec3, Vec3, Vec3] | null {
+  if (fillOf(state, o) <= 0.8) return null;
+  const { centre, normal } = frame(o);
+  const along = unit(sub(o.corners[1], o.corners[0]));
+  const half = Math.hypot(...sub(o.corners[1], o.corners[0])) / 2;
+  const taken = (shift: number) => all.some(other => {
+    if (other.id === o.id) return false;
+    const f = frame(other);
+    const rel = sub(f.centre, centre);
+    const otherHalf = Math.hypot(...sub(other.corners[1], other.corners[0])) / 2;
+    return Math.abs(dot(rel, normal)) < 0.3 && Math.abs(rel[1]) < 1.5 && Math.abs(dot(rel, along) - shift) < half + otherHalf;
+  });
+  for (let d = SNAP_STEP; d <= SNAP_MAX + 1e-9; d += SNAP_STEP) {
+    for (const shift of [d, -d]) {
+      if (fillOf(state, o, shift) < 0.2 && !taken(shift)) return moveBy(o, [along[0] * shift, along[1] * shift, along[2] * shift]);
+    }
+  }
+  return null;
 }
 
 /**
@@ -109,8 +211,19 @@ function closedInMesh(state: SimState, o: OpeningGeom): boolean {
  */
 export function loadOpenings(state: SimState, msg: LoadOpenings): OpeningsReady {
   const start = performance.now();
-  const openings = msg.openings;
-  check(openings);
+  check(msg.openings);
+  const gaps = (msg.gaps ?? []).filter(g => g.corners?.length === 4 && g.corners.every(c => c.length === 3 && c.every(Number.isFinite)));
+  // The floor plan can be a little off from the scan: each filled opening is slid onto the real hole first.
+  const everything = [...msg.openings, ...gaps];
+  const moved: { id: string; corners: [Vec3, Vec3, Vec3, Vec3] }[] = [];
+  const place = <T extends { id: string; corners: [Vec3, Vec3, Vec3, Vec3]; thickness: number }>(o: T): T => {
+    const corners = snap(state, o, everything);
+    if (!corners) return o;
+    moved.push({ id: o.id, corners });
+    return { ...o, corners };
+  };
+  const openings = msg.openings.map(place);
+  const placedGaps = gaps.map(place);
   const lines = new Float32Array(openings.length * 4 * 6);
   openings.forEach((o, i) => {
     for (let k = 0; k < 4; k++) {
@@ -118,8 +231,9 @@ export function loadOpenings(state: SimState, msg: LoadOpenings): OpeningsReady 
       lines.set(o.corners[(k + 1) % 4], (i * 4 + k) * 6 + 3);
     }
   });
-  const meshClosed = openings.map(o => closedInMesh(state, o));
+  const meshClosed = openings.map(o => fillOf(state, o) > SHUT);
 
+  // (Gaps alone, with no door or window to hold the panel index, are left as the scan has them: rare, and harmless.)
   if (openings.length === 0) {
     state.panels = null;
   } else {
@@ -136,6 +250,9 @@ export function loadOpenings(state: SimState, msg: LoadOpenings): OpeningsReady 
       meshClosed,
       active: openings.map(() => false),
       anyActive: false,
+      // Every opening and gap, filled or not: cutting out a part that is already a hole changes nothing, and a
+      // half-filled one (a door scanned half open) is then fully open or closed by its setting.
+      carved: [...openings, ...placedGaps].map(carveOf),
       surfaces: [],
     };
     setActive(state);
@@ -144,6 +261,7 @@ export function loadOpenings(state: SimState, msg: LoadOpenings): OpeningsReady 
   return {
     type: 'openingsReady',
     openings: openings.map((o, i) => ({ id: o.id, meshClosed: meshClosed[i] })),
+    ...(moved.length ? { moved } : {}),
     lines,
     ms: performance.now() - start,
   };
@@ -152,7 +270,8 @@ export function loadOpenings(state: SimState, msg: LoadOpenings): OpeningsReady 
 function setActive(state: SimState): void {
   const p = state.panels;
   if (!p) return;
-  p.active = p.openings.map((o, i) => state.closedOpenings.has(o.id) && !p.meshClosed[i]);
+  // Every opening, the scan-filled ones included: their scanned surface is carved out, so the panel is all there is.
+  p.active = p.openings.map(o => state.closedOpenings.has(o.id));
   p.anyActive = p.active.some(Boolean);
 }
 

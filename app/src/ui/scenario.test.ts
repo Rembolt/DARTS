@@ -21,6 +21,10 @@ describe('scenario', () => {
     expect(quietRating(-18).label).toBe('Moderate');
     expect(quietRating(-6).label).toBe('Loud');
   });
+  it('leaves out windows the trace already models as panels', () => {
+    expect(windowsTrim([{ type: 'window', open: false, traced: true }])).toEqual({ db: 0, highDb: 0 });
+    expect(windowsTrim([{ type: 'window', open: false, traced: true }, { type: 'window', open: false }]).db).toBeCloseTo(WINDOWS_CLOSED.db / 2);
+  });
   it('reads a strength and a trim as dB below outside', () => {
     expect(heardDb(0.1, -4)).toBeCloseTo(-14);
   });

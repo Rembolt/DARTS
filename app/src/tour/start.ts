@@ -16,14 +16,14 @@ import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
 import type { Bands, FromWorker, Vec3 } from '../sim/types';
 import { armAutoSound } from '../ui/StartScreen';
-import { ui } from '../ui/store';
+import { openingChange, ui } from '../ui/store';
 import { connectViewer, formatPose, viewerUrl, type MpSdk, type Pose } from '../viewer';
 import { browserSupport, isNotPossibleError, loadStatus, meshProblem, withTimeout } from './checks';
 import { showFailure } from './failure';
 import { attach as attachKeys } from '../ui/keys';
 import { mountTourUi } from './ui-bridge';
 
-const VIEWER_TIMEOUT_MS = 30_000;
+const VIEWER_TIMEOUT_MS = 120_000; // a slow network shows "still waiting" at 60 s (viewer.ts) before this gives up
 const WORKER_LOAD_TIMEOUT_MS = 60_000;
 /** Spec 8.3. No contract code of its own; shown as a viewer failure whose "Try again" reloads the page. */
 const CONTEXT_LOST: NotPossible = { code: 'viewer_failed', message: 'The 3D view stopped. Reload to continue.', retry: true };
@@ -395,7 +395,7 @@ export function startTour(modelId: string): void {
   let lastOpenings = ui.openings.value;
   cleanups.push(effect(() => {
     const next = ui.openings.value;
-    if (openingsToggled(lastOpenings, next)) openingSound?.play();
+    if (!openingChange.silent && openingsToggled(lastOpenings, next)) openingSound?.play();
     lastOpenings = next;
   }));
 

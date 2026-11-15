@@ -43,6 +43,8 @@ export type Opening = {
   /** Centre of the opening, viewer coordinates (Y up). */
   position: Vec3;
   open: boolean;
+  /** True when the worker traces this opening as a panel, so closing it is in the trace and needs no trim. */
+  traced?: boolean;
 };
 
 export type Step = { label: string; status: 'run' | 'done' | 'fail'; detail?: string };
@@ -180,6 +182,15 @@ export const commands = {
   converse: (_on: boolean) => {},
 };
 
+/**
+ * The number of the newest request to the agent. `commands.ask` raises it when a request starts; whoever started an
+ * older one must not clear "thinking" or speak when theirs ends late (a spoken question can replace one in progress).
+ */
+export const latestAsk = { id: 0 };
+
+/** Set while the page puts the openings in their starting state: no door or window sound for that. */
+export const openingChange = { silent: false };
+
 /** What an agent can show in the chat. The same calls fit a real streaming agent. */
 export type AgentSession = {
   /** Start a visible step. Call the returned functions when it ends. */
@@ -214,7 +225,8 @@ export function createSession(): AgentSession {
       if (opts?.silent) return;
       // Real voice when the server has one; otherwise the orb still moves for a moment, as before.
       void speak(briefly(text), 'jev', on => (ui.speaking.value = on)).then(played => {
-        if (played) return;
+        // In a voice conversation a pretend "speaking" would make the next sentence look like an interruption.
+        if (played || ui.converse.value) return;
         ui.speaking.value = true;
         setTimeout(() => (ui.speaking.value = false), Math.min(4000, 900 + text.length * 25));
       });

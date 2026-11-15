@@ -257,7 +257,7 @@ function readFacts(cacheDir: string, modelId: string, lookup: Search['lookup']):
 
 type MessagesClient = {
   messages: {
-    create(params: Record<string, unknown>): Promise<{
+    create(params: Record<string, unknown>, options?: { timeout: number; maxRetries: number }): Promise<{
       stop_reason?: string | null;
       content?: { type: string; name?: string; input?: unknown }[];
     }>;
@@ -294,7 +294,7 @@ export async function suggestDefaults(
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       output_config: { effort: 'low' },
       tools: [PROPOSE_DEFAULTS_TOOL],
       tool_choice: { type: 'tool', name: 'propose_defaults' },
@@ -317,8 +317,9 @@ export async function suggestDefaults(
           }),
         },
       ],
-    });
-    if (response.stop_reason === 'refusal') return table;
+    }, { timeout: 45_000, maxRetries: 1 });
+    // A proposal cut off at the token limit is incomplete: never cache it, the table stands in this time.
+    if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') return table;
     const block = response.content?.find(
       (b): b is { type: 'tool_use'; name: string; input: unknown } =>
         b.type === 'tool_use' && 'name' in b && b.name === 'propose_defaults',

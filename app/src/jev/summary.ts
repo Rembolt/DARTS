@@ -78,8 +78,7 @@ export function sceneSummary(scene: SceneState, effects: SceneEffects): object {
         id: o.id,
         room: o.roomName,
         width: r2(o.width),
-        closed: o.meshClosed || scene.openings.closed[o.id] === true,
-        ...(o.meshClosed ? { meshClosed: true } : {}),
+        closed: scene.openings.closed[o.id] === true,
       }));
   }
 
@@ -91,8 +90,7 @@ export function sceneSummary(scene: SceneState, effects: SceneEffects): object {
         id: o.id,
         room: o.roomName,
         width: r2(o.width),
-        closed: o.meshClosed || scene.openings.closed[o.id] === true,
-        ...(o.meshClosed ? { meshClosed: true } : {}),
+        closed: scene.openings.closed[o.id] === true,
       }));
   }
 

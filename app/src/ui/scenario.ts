@@ -14,22 +14,24 @@ export const TIME_OF_DAY: { id: TimeOfDay; label: string; db: number; highDb: nu
 ];
 
 /**
- * Closing every window: this much less outdoor sound, mostly treble. A stand-in until the worker traces window
- * panels (v2-design.md 7.4), which will replace it with real per-window numbers.
+ * Closing every window: this much less outdoor sound, mostly treble. A stand-in for windows the scan already shows
+ * closed (the mesh has glass there, so the trace cannot open them). Windows the worker traces as panels
+ * (v2-design.md 7.4) are left out: `Opening.traced`.
  */
 export const WINDOWS_CLOSED = { db: -8, highDb: -10 };
 
 export type Trim = { db: number; highDb: number };
 
-export function windowsTrim(openings: Pick<Opening, 'type' | 'open'>[]): Trim {
+export function windowsTrim(openings: Pick<Opening, 'type' | 'open' | 'traced'>[]): Trim {
   const windows = openings.filter(o => o.type === 'window');
   if (!windows.length) return { db: 0, highDb: 0 };
-  const closed = windows.filter(w => !w.open).length / windows.length;
+  // A window the worker traces as a panel already loses its sound in the trace: counting it here too would double it.
+  const closed = windows.filter(w => !w.open && !w.traced).length / windows.length;
   if (closed === 0) return { db: 0, highDb: 0 };
   return { db: WINDOWS_CLOSED.db * closed, highDb: WINDOWS_CLOSED.highDb * closed };
 }
 
-export function outdoorTrim(openings: Pick<Opening, 'type' | 'open'>[], time: TimeOfDay): Trim {
+export function outdoorTrim(openings: Pick<Opening, 'type' | 'open' | 'traced'>[], time: TimeOfDay): Trim {
   const w = windowsTrim(openings);
   const t = TIME_OF_DAY.find(x => x.id === time) ?? TIME_OF_DAY[0];
   return { db: w.db + t.db, highDb: w.highDb + t.highDb };

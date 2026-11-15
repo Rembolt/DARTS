@@ -53,7 +53,8 @@ function unlock(): void {
   if (audio || typeof Audio === 'undefined') return;
   audio = new Audio();
   audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
-  void audio.play().catch(() => {});
+  // play() returns nothing in old browsers and in jsdom.
+  void audio.play()?.catch(() => {});
 }
 if (typeof window !== 'undefined') {
   for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, unlock, { once: true, capture: true });

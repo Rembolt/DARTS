@@ -2,7 +2,7 @@
 // `firstTracedHit` (or `crossSegment`, which filters the same way), so an untraced layer is invisible to sound.
 import { firstHit } from './geometry';
 import type { SimState } from './load';
-import { firstPanelHit } from './openings';
+import { carvedAt, firstPanelHit, hasCarved } from './openings';
 import type { ToWorker, Vec3 } from './types';
 
 export type Hit = { distance: number; triangle: number };
@@ -69,6 +69,7 @@ export function isTraced(state: SimState, t: number): boolean {
 }
 
 const at: Vec3 = [0, 0, 0];
+const hitAt: Vec3 = [0, 0, 0];
 
 /**
  * The nearest traced triangle along the ray within `maxDist`, or the nearest closed door or window panel if that is
@@ -83,11 +84,12 @@ export function firstTracedHit(state: SimState, origin: Vec3, dir: Vec3, maxDist
 }
 
 /**
- * The nearest main-mesh triangle in a traced layer. A hit on an untraced layer is skipped and the ray continues
+ * The nearest main-mesh triangle in a traced layer and outside every carved opening. Any other hit is skipped and the ray continues
  * just past it, up to `MAX_SKIPS` times.
  */
 function firstMeshHit(state: SimState, origin: Vec3, dir: Vec3, maxDist: number): Hit | null {
-  if (state.allTraced) return firstHit(state.index, origin, dir, maxDist);
+  const carving = hasCarved(state);
+  if (state.allTraced && !carving) return firstHit(state.index, origin, dir, maxDist);
   const len = Math.hypot(dir[0], dir[1], dir[2]);
   if (len === 0) return null;
   const dx = dir[0] / len, dy = dir[1] / len, dz = dir[2] / len;
@@ -96,7 +98,10 @@ function firstMeshHit(state: SimState, origin: Vec3, dir: Vec3, maxDist: number)
     at[0] = origin[0] + dx * travelled; at[1] = origin[1] + dy * travelled; at[2] = origin[2] + dz * travelled;
     const hit = firstHit(state.index, at, dir, maxDist - travelled);
     if (!hit) return null;
-    if (state.layerTraced[state.layer[hit.triangle]]) return { distance: travelled + hit.distance, triangle: hit.triangle };
+    const d = travelled + hit.distance;
+    hitAt[0] = origin[0] + dx * d; hitAt[1] = origin[1] + dy * d; hitAt[2] = origin[2] + dz * d;
+    // Skipped: an untraced layer, or the scanned glass or leaf of an opening (its panel decides instead).
+    if (state.layerTraced[state.layer[hit.triangle]] && !(carving && carvedAt(state, hitAt))) return { distance: d, triangle: hit.triangle };
     travelled += hit.distance + SKIP_STEP;
     if (travelled >= maxDist) return null;
   }

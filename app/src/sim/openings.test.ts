@@ -67,13 +67,18 @@ it('never rebuilds the main index', () => {
   expect(state.mesh.indices).toEqual(indices);
 });
 
-it('reports an opening the mesh already closes', () => {
-  const state = splitRoom(); // a solid wall at x = 2
-  const ready = loadOpenings(state, { type: 'loadOpenings', openings: [door('solid')] });
-  expect(ready.openings).toEqual([{ id: 'solid', meshClosed: true }]);
-  const before = directSound(state, LISTENER, SOURCE);
-  applySetOpenings(state, { type: 'setOpenings', closed: ['solid'] });
-  expect(directSound(state, LISTENER, SOURCE)).toEqual(before); // closing it again would double the loss
+it('an opening the scan filled (glass, a closed leaf) is open or closed by its setting, not by the scan', () => {
+  const state = splitRoom(); // a solid wall at x = 2: the scanned glass
+  const ready = loadOpenings(state, { type: 'loadOpenings', openings: [door('scanned')] });
+  expect(ready.openings).toEqual([{ id: 'scanned', meshClosed: true }]);
+  // Open: the scanned surface inside the opening is cut out, so the sound comes through.
+  expect(directSound(state, LISTENER, SOURCE).walls).toBe(0);
+  expect(crossSegment(state, LISTENER, SOURCE, 0)).not.toBeNull();
+  // Closed: one wall, the panel, never the panel and the scanned surface on top of each other.
+  applySetOpenings(state, { type: 'setOpenings', closed: ['scanned'] });
+  expect(directSound(state, LISTENER, SOURCE).walls).toBe(1);
+  // Beside the opening the wall is still wall.
+  expect(directSound(state, [1, 1, 0.5], [3, 1, 0.5]).walls).toBe(1);
 });
 
 it('returns outline lines', () => {
@@ -104,4 +109,31 @@ it('uses glass for windows and door for doors', () => {
   const hit = firstTracedHit(state, [0.5, 1, 1.5], [1, 0, 0])!;
   expect(hit.triangle).toBeGreaterThanOrEqual(state.mesh.indices.length / 3);
   expect(surfaceAt(state, hit.triangle).blockingDb).toEqual(MATERIALS.glass.blockingDb);
+});
+
+it('slides an opening the floor plan has a little off onto the scan’s real hole', () => {
+  const state = doorwayRoom(); // the real hole: z 1–2
+  const off: OpeningGeom = { id: 'off', kind: 'door', roomId: 'left', thickness: 0.1, corners: [[2, 0, 1.85], [2, 0, 2.75], [2, 2, 2.75], [2, 2, 1.85]] };
+  const ready = loadOpenings(state, { type: 'loadOpenings', openings: [off] });
+  const moved = ready.moved?.find(m => m.id === 'off');
+  expect(moved).toBeDefined();
+  expect(moved!.corners[0][2]).toBeLessThan(1.85 - 0.5);
+  expect(ready.openings).toEqual([{ id: 'off', meshClosed: false }]);
+  // Closing the moved door closes the real hole.
+  applySetOpenings(state, { type: 'setOpenings', closed: ['off'] });
+  expect(directSound(state, LISTENER, SOURCE).walls).toBe(1);
+});
+
+it('never slides glass with no hole near it, nor onto another opening', () => {
+  const solid = splitRoom();
+  expect(loadOpenings(solid, { type: 'loadOpenings', openings: [door('glass')] }).moved).toBeUndefined();
+  const state = doorwayRoom();
+  const off: OpeningGeom = { id: 'off', kind: 'window', roomId: 'left', thickness: 0.1, corners: [[2, 0, 1.85], [2, 0, 2.75], [2, 2, 2.75], [2, 2, 1.85]] };
+  expect(loadOpenings(state, { type: 'loadOpenings', openings: [door('real'), off] }).moved).toBeUndefined();
+});
+
+it('cuts gaps (archways, half walls) out of the scan, always open', () => {
+  const state = splitRoom(); // something scanned across the archway at x = 2
+  loadOpenings(state, { type: 'loadOpenings', openings: [door('elsewhere', 1)], gaps: [{ id: 'arch', thickness: 0.1, corners: [[2, 0, 1], [2, 0, 2], [2, 2, 2], [2, 2, 1]] }] });
+  expect(directSound(state, LISTENER, SOURCE).walls).toBe(0);
 });

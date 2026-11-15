@@ -188,10 +188,9 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
         const o = openings.find(x => x.id === a.id);
         if (!o) return fail(`Unknown opening: ${a.id}.`);
         if (o.kind !== 'window' && o.kind !== 'door') return fail(`Opening ${a.id} is a gap with no door or window to close.`);
-        if (o.meshClosed) return fail(`Opening ${a.id} is already closed in the scan, so it can't be changed.`);
         targets = [o];
       } else {
-        targets = openings.filter(o => (!room || o.roomId === room.id) && !o.meshClosed && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
+        targets = openings.filter(o => (!room || o.roomId === room.id) && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
         if (targets.length === 0) {
           const what = type === 'window' ? 'windows' : type === 'door' ? 'doors' : 'windows or doors';
           return fail(room ? `No ${what} to change in ${room.name}.` : `No ${what} to change.`);

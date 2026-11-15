@@ -105,7 +105,7 @@ describe('execute', () => {
       { store, actions, effects },
     );
     expect(res.is_error).toBe(true);
-    expect(res.content).toBe('Not allowed: turn on PUT for Windows in Settings.');
+    expect(res.content).toBe('Not allowed here: the assistant has no permission for Windows.');
     expect(spy).not.toHaveBeenCalled();
   });
 

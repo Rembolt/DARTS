@@ -7,7 +7,7 @@ import { Orb, stateLabel } from './Orb';
 import { bandMean } from './compass';
 import { heardDb, outdoorTrim } from './scenario';
 import { setVoiceMuted, stopSpeaking, voiceMuted } from '../voice/speak';
-import { agentState, commands, createSession, isOutdoorSource, pushChat, resolveProposal, ui, type ChatMessage } from './store';
+import { agentState, commands, createSession, isOutdoorSource, latestAsk, pushChat, resolveProposal, ui, type ChatMessage } from './store';
 
 /** One suggestion from the numbers, or nothing. Never a generic list. */
 /** Render **bold** in a message as <strong> without touching innerHTML. */
@@ -177,12 +177,15 @@ export function Chat() {
     ui.selection.value = null;
     ui.thinking.value = true;
     const session = createSession();
+    const request = commands.ask(q, session);
+    const mine = latestAsk.id;
     try {
-      await commands.ask(q, session);
+      await request;
     } catch (err) {
       session.say(`That failed: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {
-      ui.thinking.value = false;
+      // A spoken question may have replaced this one: then the newer request owns the "thinking" state.
+      if (mine === latestAsk.id) ui.thinking.value = false;
     }
   }
 

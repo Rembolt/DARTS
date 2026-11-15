@@ -5,11 +5,41 @@ import { useRef } from 'preact/hooks';
 import { MaterialSelect } from './MaterialSelect';
 import { DEFAULT_SETTINGS, parseSettings, QUALITY, SURFACES, type Quality } from './materials';
 import { Panel } from './Panel';
-import { patchSettings, setSettings, commands, ui } from './store';
+import { patchSettings, setOpenings, setSettings, setSpeakers, commands, SOUND_LIBRARY, ui, type Speaker } from './store';
 import { toast } from 'sonner';
 
+/** Speakers someone placed (by a click or through the assistant). The property's own outside sounds are not part of a scene file. */
+const isPlaced = (s: Speaker) => s.id.startsWith('speaker-');
+
+/** The speakers of a scene file: only well-formed ones with a sound from the library; anything else is dropped. */
+export function parseSpeakers(raw: unknown): Speaker[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Speaker[] = [];
+  for (const v of raw.slice(0, 6)) {
+    if (!v || typeof v !== 'object') continue;
+    const s = v as Record<string, unknown>;
+    const lib = SOUND_LIBRARY.find(l => l.id === s.sound);
+    const p = s.position;
+    if (!lib || typeof s.id !== 'string' || !/^speaker-\d+$/.test(s.id)) continue;
+    if (!Array.isArray(p) || p.length !== 3 || !p.every(n => typeof n === 'number' && Number.isFinite(n))) continue;
+    const level = typeof s.levelDb === 'number' && Number.isFinite(s.levelDb) ? Math.min(6, Math.max(-30, s.levelDb)) : lib.levelDb;
+    out.push({
+      id: s.id, label: typeof s.label === 'string' && s.label ? s.label.slice(0, 60) : lib.label, sound: lib.id, kind: lib.kind,
+      position: [p[0], p[1], p[2]], levelDb: level, enabled: s.enabled !== false,
+    });
+  }
+  return out;
+}
+
 function save() {
-  const scene = { version: 1, settings: ui.settings.value, timeOfDay: ui.timeOfDay.value };
+  const scene = {
+    version: 2,
+    settings: ui.settings.value,
+    timeOfDay: ui.timeOfDay.value,
+    // Positions and opening ids belong to this property: loading the file in another tour keeps only the settings.
+    speakers: ui.speakers.value.filter(isPlaced),
+    closedOpenings: ui.openings.value.filter(o => !o.open).map(o => o.id),
+  };
   const url = URL.createObjectURL(new Blob([JSON.stringify(scene, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
@@ -23,6 +53,17 @@ async function load(file: File) {
     const raw = JSON.parse(await file.text());
     if (!raw || typeof raw !== 'object') throw new Error('not a scene file');
     setSettings(parseSettings(raw.settings ?? raw));
+    // Version 1 files hold settings only: speakers and openings then stay as they are.
+    if (Array.isArray(raw.speakers)) {
+      const loaded = parseSpeakers(raw.speakers);
+      const ids = new Set(loaded.map(s => s.id));
+      setSpeakers([...ui.speakers.value.filter(s => !isPlaced(s) && !ids.has(s.id)), ...loaded]);
+    }
+    if (Array.isArray(raw.closedOpenings)) {
+      const closed = new Set(raw.closedOpenings.filter((id: unknown) => typeof id === 'string'));
+      // Ids this property does not have are simply not found: nothing else changes.
+      if (ui.openings.value.some(o => o.open === closed.has(o.id))) setOpenings(ui.openings.value.map(o => ({ ...o, open: !closed.has(o.id) })));
+    }
     toast('Scene loaded', { description: file.name });
   } catch (err) {
     toast('Could not load that file', { description: err instanceof Error ? err.message : 'unknown error' });

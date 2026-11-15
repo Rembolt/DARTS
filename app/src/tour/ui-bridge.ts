@@ -13,17 +13,19 @@ import { setMaterialsMessage } from '../scene/materials';
 import { defaultScene, isMaterialName, QUALITY as SCENE_QUALITY, type MaterialDefaults, type SceneState } from '../scene/state';
 import { createStore } from '../scene/store';
 import type { SimClient } from '../sim/client';
-import type { Bands, FromWorker, OpeningGeom, RoomGeom, ToWorker, Vec3 } from '../sim/types';
+import type { Bands, FromWorker, GapGeom, OpeningGeom, RoomGeom, ToWorker, Vec3 } from '../sim/types';
 import type { Pose } from '../viewer';
 import { createFieldClient, installFeatures } from '../ui/features';
-import { materialById, toConfigMessage } from '../ui/materials';
+import { materialById } from '../ui/materials';
+import { outdoorTrim } from '../ui/scenario';
 import { mountUi } from '../ui/mount';
 import { createOcclusion, type Occlusion } from '../ui/occlusion';
 import { startedBefore } from '../ui/StartScreen';
 import { startConversation, type Conversation } from '../voice/converse';
 import { ackAfter, stopSpeaking, warmAcks } from '../voice/speak';
-import { addProbe, addSpeaker, commands, createSession, pushChat, SOUND_LIBRARY, ui, type Opening, type Speaker } from '../ui/store';
+import { addProbe, addSpeaker, commands, createSession, isOutdoorSource, latestAsk, openingChange, pushChat, setOpenings, SOUND_LIBRARY, ui, type Opening, type Speaker } from '../ui/store';
 import { createPlacement } from './placement';
+import { carveOf, insideAny } from '../sim/openings';
 
 export type BridgeDeps = {
   modelId: string;
@@ -63,6 +65,9 @@ export type TourUiBridge = {
 
 type Convo = Parameters<typeof ask>[1];
 
+/** A measure the worker has not answered by then is given up, so the agent never waits forever. */
+const MEASURE_TIMEOUT_MS = 8000;
+
 export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   mountUi(deps.uiRoot);
   ui.started.value = startedBefore();
@@ -81,6 +86,8 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   let roomsTagged = false;
   let openingsLoaded = false;
   let openingGeoms: OpeningGeom[] = [];
+  let gapGeoms: GapGeom[] = [];
+  let openingsStarted = false; // the openings were put in the state the scan shows, once per tour
   const drawOpenings = () => {
     const state = new Map(ui.openings.value.map(o => [o.id, o.open]));
     deps.blueprint.setOpenings(openingGeoms.map(g => ({ id: g.id, kind: g.kind, corners: g.corners, open: state.get(g.id) ?? true })));
@@ -106,8 +113,22 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
 
   const toRoomInfo = (r: GeometryAnswer['rooms'][number]): RoomInfo => {
     const n = r.polygon.length;
-    const cx = n ? r.polygon.reduce((s, p) => s + p[0], 0) / n : 0;
-    const cz = n ? -r.polygon.reduce((s, p) => s + p[1], 0) / n : 0;
+    let cx = n ? r.polygon.reduce((s, p) => s + p[0], 0) / n : 0;
+    let cz = n ? -r.polygon.reduce((s, p) => s + p[1], 0) / n : 0;
+    // The area centroid, not the mean of the corners: a wall with many corners must not pull the centre toward it.
+    let twice = 0, sx = 0, sy = 0;
+    for (let i = 0; i < n; i++) {
+      const [x0, y0] = r.polygon[i];
+      const [x1, y1] = r.polygon[(i + 1) % n];
+      const cross = x0 * y1 - x1 * y0;
+      twice += cross;
+      sx += (x0 + x1) * cross;
+      sy += (y0 + y1) * cross;
+    }
+    if (Math.abs(twice) > 1e-6) {
+      cx = sx / (3 * twice);
+      cz = -sy / (3 * twice);
+    }
     return { id: r.id, name: r.name, floor: r.floor, area: r.area, centre: n ? [cx, r.floorZ + 1.5, cz] : null };
   };
 
@@ -133,7 +154,9 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     sceneStore.set({ ...sceneStore.get(), openings: { loaded: openingsLoaded, closed: nextClosed } }, ['openings']);
     if (openingsLoaded) post({ type: 'setOpenings', closed });
     drawOpenings();
+    deps.clearReverb();
     deps.retrace();
+    features.invalidate();
   };
 
   const toSoundId = (id: string): SoundId => (id in SOUNDS ? (id as SoundId) : 'music');
@@ -169,6 +192,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     deps.setSourceSpecs?.(audioSpecs);
     void deps.getAudio()?.setSources(audioSpecs);
     deps.retrace();
+    features.invalidate();
   };
 
   let syncingFromJev = false;
@@ -189,11 +213,35 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     }
   };
 
+  /** The stand-in trim (windows the scan shows closed, time of day) on an outside source's level, so numbers match the ear. */
+  const heard = (id: string, levelDb: Bands): Bands => {
+    if (!isOutdoorSource(id)) return levelDb;
+    const t = outdoorTrim(ui.openings.value, ui.timeOfDay.value).db;
+    return [levelDb[0] + t, levelDb[1] + t, levelDb[2] + t];
+  };
+  /** The level of a traced source as the worker's `measure` states it: all its energy, against the source at 1 m. */
+  const tracedLevelDb = (s: { direct: Bands; lateEnergy: Bands; slots: { energy: Bands }[]; distance: number }): Bands => {
+    const d = Math.max(0.1, s.distance);
+    return [0, 1, 2].map(k => {
+      let e = s.direct[k] + s.lateEnergy[k];
+      for (const slot of s.slots) e += slot.energy[k];
+      return e > 0 ? Math.max(-120, 10 * Math.log10(e / (d * d))) : -120;
+    }) as Bands;
+  };
+
+  /** Everything the worker needs from the scene: the material table and the quality. Never the MVP `config` message, which would replace the table with three house-wide materials. */
+  const postScene = (scene: SceneState) => {
+    post(setMaterialsMessage(scene, roomsTagged));
+    const q = SCENE_QUALITY[scene.quality];
+    post({ type: 'setQuality', raysPerTrace: q.raysPerTrace, bounces: q.bounces, reverbRays: q.reverbRays });
+  };
+
   const effects: SceneEffects = {
     materialsChanged(scene: SceneState) {
       post(setMaterialsMessage(scene, roomsTagged));
       syncSceneToUiSettings(scene);
       deps.retrace();
+      features.invalidate();
     },
     qualityChanged(scene: SceneState) {
       const q = SCENE_QUALITY[scene.quality];
@@ -207,12 +255,14 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       ui.openings.value = ui.openings.value.map(o => ({ ...o, open: !closedSet.has(o.id) }));
       if (openingsLoaded) post({ type: 'setOpenings', closed: closedIds });
       deps.retrace();
+      features.invalidate();
     },
     layersChanged(scene: SceneState) {
       const traced: Record<string, boolean> = {};
       for (const [id, v] of Object.entries(scene.meshLayers)) traced[id] = v.traced;
       post({ type: 'setLayers', traced });
       deps.retrace();
+      features.invalidate();
     },
     async sourcesChanged(scene: SceneState) {
       ui.speakers.value = scene.sources.map(s => ({
@@ -230,6 +280,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       deps.setSourceSpecs?.(audioSpecs);
       await deps.getAudio()?.setSources(audioSpecs);
       deps.retrace();
+      features.invalidate();
     },
     clearReverb: deps.clearReverb,
     retrace: deps.retrace,
@@ -253,16 +304,33 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
         deps.getListener() ??
         [0, 1.5, 0];
       const rid = at.roomId ?? deps.getRoomId() ?? 'unknown';
+      // No worker yet (the mesh is still loading, or failed): nothing would ever answer.
+      if (!deps.getSim()) return Promise.reject(new Error('the simulation is not ready'));
       const id = ++measureId;
-      return new Promise(resolve => {
+      return new Promise((resolve, reject) => {
+        // The worker reports a failed job without its id, so an unanswered measure must end by itself.
+        const timer = setTimeout(() => {
+          pendingMeasures.delete(id);
+          reject(new Error('the measurement took too long'));
+        }, MEASURE_TIMEOUT_MS);
         pendingMeasures.set(id, r => {
-          resolve({ roomId: rid, echoTime: r.echoTime, sources: r.sources, estimated: false });
+          clearTimeout(timer);
+          pendingMeasures.delete(id);
+          resolve({ roomId: rid, echoTime: r.echoTime, sources: r.sources.map(s => ({ ...s, levelDb: heard(s.id, s.levelDb) })), estimated: false });
         });
         post({ type: 'measure', id, point, roomId: rid, sources: srcs });
       });
     },
     current: () => latestMeasurement,
-    rooms: () => (piGeometry ? piGeometry.rooms.map(toRoomInfo) : []),
+    // For the actions the centre is on the floor: `place` adds the 1 m a speaker stands at. (measure and moveUserTo
+    // above use the ear-height centre from toRoomInfo directly.)
+    rooms: () =>
+      piGeometry
+        ? piGeometry.rooms.map(r => {
+            const info = toRoomInfo(r);
+            return info.centre ? { ...info, centre: [info.centre[0], r.floorZ, info.centre[2]] as Vec3 } : info;
+          })
+        : [],
     openings: () => (piGeometry ? piGeometry.openings.map(toOpeningInfo) : []),
     layers: () => meshLayers,
     roomsTagged: () => roomsTagged,
@@ -287,6 +355,9 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   let jevAbort: AbortController | null = null;
   commands.stop = () => jevAbort?.abort();
   commands.ask = async (text, session) => {
+    // One request at a time: a new one ends the one before it, and only the newest may keep what it learned or speak.
+    jevAbort?.abort();
+    const mine = ++latestAsk.id;
     const step = session.step('Thinking');
     const abort = (jevAbort = new AbortController());
     try {
@@ -300,9 +371,12 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
           s.done();
         },
       });
-      jevConvo = res.convo;
+      const newest = mine === latestAsk.id;
+      // A replaced request ends with the conversation as it was before it; writing that back would drop the newer turn.
+      if (newest) jevConvo = res.convo;
       step.done();
-      session.say(res.reply);
+      // "Stopped." is shown, never read aloud.
+      session.say(res.reply, { silent: !newest || abort.signal.aborted });
     } catch (err) {
       console.error('[jev] step failed:', err);
       step.fail('could not finish');
@@ -312,36 +386,39 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
 
   // Voice: open-source Whisper in a worker. Mic on records; mic off transcribes, then the text goes to Jev like a typed question.
   const recorder = createRecorder();
-  recorder.warm();
   const ask_ = (text: string) => {
     pushChat('user', text);
     ui.chatOpen.value = true;
     ui.thinking.value = true;
     const session = createSession();
     // Talking with Jev: a small "mm" if the answer is slow, the way a person would not leave a silence.
-    runStopped = false;
+    let stopped = false;
+    markStopped = () => (stopped = true);
     const cancelFiller = ui.converse.value ? ackAfter('jev', text, 150, on => (ui.speaking.value = on)) : () => {};
     cancelAck = cancelFiller;
     const sessionSay = session.say;
     // A request the user stopped still reports "Stopped" on screen, but never out loud.
-    session.say = (t, o) => (cancelFiller(), sessionSay(t, { ...o, silent: o?.silent || runStopped }));
-    void commands
-      .ask(text, session)
+    session.say = (t, o) => (cancelFiller(), sessionSay(t, { ...o, silent: o?.silent || stopped || mine !== latestAsk.id }));
+    const request = commands.ask(text, session);
+    const mine = latestAsk.id;
+    void request
       .catch(err => {
         console.error('[jev] request failed:', err);
         session.say("Sorry, I couldn't do that.");
       })
       .finally(() => {
         cancelFiller();
-        ui.thinking.value = false;
+        // A newer request may already be running: then "thinking" is its to clear.
+        if (mine === latestAsk.id) ui.thinking.value = false;
       });
   };
-  let runStopped = false;
+  // Marks the spoken request in progress as stopped. Per request, so a new one starting does not un-stop the old one.
+  let markStopped: () => void = () => {};
   let cancelAck: () => void = () => {};
   // Stopping Jev stops everything it is doing: the request, a pending "of course", and any speech already playing.
   const stopRequest = commands.stop;
   commands.stop = () => {
-    runStopped = true;
+    markStopped();
     cancelAck();
     stopRequest();
     stopSpeaking();
@@ -356,6 +433,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     }
     if (on) {
       ui.liveText.value = '';
+      recorder.warm(); // the model downloads on first use of the mic, not on every tour
       recorder.start(t => (ui.liveText.value = t)).catch(() => {
         ui.listening.value = false;
         pushChat('jev', 'I could not use the microphone. Allow it in the browser, or type instead.');
@@ -436,6 +514,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     deps.blueprint.setHeat(ui.heat.value);
   });
 
+  let lastSettings: typeof ui.settings.value | null = null;
   const stopSettingsEffect = effect(() => {
     const s = ui.settings.value;
     deps.blueprint.setSurfaceColors([
@@ -443,26 +522,41 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       materialById(s.materials.floor).color,
       materialById(s.materials.ceiling).color,
     ]);
-    if (!syncingFromJev) {
-      const prev = sceneStore.get();
-      sceneStore.set(
-        {
-          ...prev,
-          surfaces: {
-            ...prev.surfaces,
-            wall: isMaterialName(s.materials.wall) ? s.materials.wall : prev.surfaces.wall,
-            floor: isMaterialName(s.materials.floor) ? s.materials.floor : prev.surfaces.floor,
-            ceiling: isMaterialName(s.materials.ceiling) ? s.materials.ceiling : prev.surfaces.ceiling,
-          },
-          furnishing: s.furnishing,
-          quality: s.quality,
-        },
-        ['surfaces', 'furnishing', 'quality'],
-      );
+    // A change that came from the scene (the agent, suggested defaults) was already sent to the worker by its effect.
+    const last = lastSettings;
+    lastSettings = s;
+    if (syncingFromJev) return;
+    const prev = sceneStore.get();
+    const surfaces = { ...prev.surfaces };
+    const roomSurfaces = { ...prev.roomSurfaces };
+    for (const cls of ['wall', 'floor', 'ceiling'] as const) {
+      const picked = s.materials[cls];
+      // Only a surface the person changed here: the scene may hold a blend or a material this panel does not list.
+      // (On the first run: a choice remembered from an earlier visit, when it differs from the scene's own.)
+      if ((last ? last.materials[cls] : prev.surfaces[cls]) === picked || !isMaterialName(picked)) continue;
+      surfaces[cls] = picked;
+      // Their choice is for the whole house: rooms no longer keep their own material for that surface.
+      for (const id of Object.keys(roomSurfaces)) {
+        const rest = { ...roomSurfaces[id] };
+        delete rest[cls];
+        roomSurfaces[id] = rest;
+      }
     }
+    const furnishingChanged = !!last && last.furnishing !== s.furnishing;
+    const next: SceneState = {
+      ...prev,
+      surfaces,
+      roomSurfaces,
+      furnishing: s.furnishing,
+      roomFurnishing: furnishingChanged ? {} : prev.roomFurnishing,
+      quality: s.quality,
+    };
+    sceneStore.set(next, ['surfaces', 'roomSurfaces', 'furnishing', 'roomFurnishing', 'quality']);
     if (deps.getSim()) {
-      post(toConfigMessage(s));
+      postScene(next);
+      deps.clearReverb();
       deps.retrace();
+      features.invalidate();
     }
   });
 
@@ -518,15 +612,26 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
           thickness: o.thickness,
         };
       });
+    // Archways and half walls: nothing to close, but the scan may have something across them (a railing, a curtain).
+    const gaps: GapGeom[] = piGeometry.openings
+      .filter(o => o.kind === 'opening' || o.kind === 'divider')
+      .map(o => ({
+        id: o.id,
+        thickness: o.thickness,
+        corners: [
+          [o.a[0], o.bottom, -o.a[1]],
+          [o.b[0], o.bottom, -o.b[1]],
+          [o.b[0], o.bottom + o.height, -o.b[1]],
+          [o.a[0], o.bottom + o.height, -o.a[1]],
+        ],
+      }));
     post({ type: 'setRooms', rooms });
-    post({ type: 'loadOpenings', openings });
+    post({ type: 'loadOpenings', openings, gaps });
     openingsLoaded = true;
     openingGeoms = openings;
+    gapGeoms = gaps;
     drawOpenings();
-    if (piDefaults) {
-      actions.applyDefaults(piDefaults);
-      piDefaults = null;
-    }
+    // Suggested defaults are applied when the worker answers `roomsReady`, so they are always per room.
   };
 
   fetch(`/api/openings/${encodeURIComponent(deps.modelId)}`)
@@ -555,7 +660,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     .then(r => (r.ok ? r.json() : null))
     .then((defaults: MaterialDefaults | null) => {
       if (!defaults) return;
-      if (piGeometry) actions.applyDefaults(defaults);
+      if (roomsTagged) actions.applyDefaults(defaults);
       else piDefaults = defaults;
     })
     .catch(() => {
@@ -599,7 +704,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       wallsBusy = false;
       const next = wallsNext;
       wallsNext = null;
-      if (next) void refreshWalls(next.listener, next.srcs);
+      if (next) refreshWalls(next.listener, next.srcs).catch(() => {});
     }
   };
 
@@ -611,17 +716,49 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       occlusion = createOcclusion(ready.mesh, map => {
         ui.hidden.value = map;
       });
+      postScene(sceneStore.get());
       sendGeometryToWorker();
-      post(toConfigMessage(ui.settings.value));
     },
     onWorkerMessage(msg) {
       if (field.onMessage(msg)) return;
       if (msg.type === 'roomsReady') {
         roomsTagged = true;
+        if (piDefaults) {
+          actions.applyDefaults(piDefaults);
+          piDefaults = null;
+        } else {
+          // The rooms are known now: send the table again so room materials reach their rooms.
+          postScene(sceneStore.get());
+          deps.clearReverb();
+          deps.retrace();
+        }
         return;
       }
       if (msg.type === 'openingsReady') {
         for (const o of msg.openings) meshClosedByOpening.set(o.id, o.meshClosed);
+        // Openings the worker slid onto the scan's real hole: the outline, the pin and the hole move with them.
+        const moved = new Map((msg.moved ?? []).map(m => [m.id, m.corners]));
+        openingGeoms = openingGeoms.map(g => (moved.has(g.id) ? { ...g, corners: moved.get(g.id)! } : g));
+        gapGeoms = gapGeoms.map(g => (moved.has(g.id) ? { ...g, corners: moved.get(g.id)! } : g));
+        // The blueprint cuts the same holes the sound goes through: every opening and gap, as the worker carves them.
+        const carved = [...openingGeoms, ...gapGeoms].map(carveOf);
+        deps.blueprint.setHoles(carved.length ? p => insideAny(carved, p) : null);
+        const centre = (c: OpeningGeom['corners']): Vec3 => [0, 1, 2].map(k => (c[0][k] + c[1][k] + c[2][k] + c[3][k]) / 4) as Vec3;
+        const next = ui.openings.value.map(o => ({
+          ...o,
+          // Every loaded opening is traced as a panel: no stand-in trim.
+          traced: meshClosedByOpening.has(o.id),
+          ...(moved.has(o.id) ? { position: centre(moved.get(o.id)!) } : {}),
+          // The first time: each opening starts as the scan shows it (glass or a closed leaf: closed; a hole: open).
+          ...(!openingsStarted && meshClosedByOpening.has(o.id) ? { open: !meshClosedByOpening.get(o.id) } : {}),
+        }));
+        openingsStarted = true;
+        openingChange.silent = true;
+        try {
+          setOpenings(next); // through the scene store and the worker, like a click
+        } finally {
+          openingChange.silent = false;
+        }
         return;
       }
       if (msg.type === 'measure') {
@@ -643,16 +780,13 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
           echoTime,
           sources: msg.sources.map(s => ({
             id: s.id,
-            levelDb: [
-              10 * Math.log10(Math.max(1e-6, s.direct[0])),
-              10 * Math.log10(Math.max(1e-6, s.direct[1])),
-              10 * Math.log10(Math.max(1e-6, s.direct[2])),
-            ] as Bands,
+            // The same quantity `measure` reports, so a before/after pair compares like with like.
+            levelDb: heard(s.id, tracedLevelDb(s)),
             walls: s.walls,
           })),
           estimated: !deps.getEchoTime(),
         };
-        void refreshWalls(msg.listener, srcs);
+        refreshWalls(msg.listener, srcs).catch(err => console.warn('walls:', err instanceof Error ? err.message : err));
       }
     },
     onPose(pose, inside) {
@@ -686,8 +820,11 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
         enabled: s.enabled,
         ...(s.every ? { every: s.every } : {}),
       }));
-      sceneStore.set({ ...sceneStore.get(), sources: nextSceneSources }, ['sources']);
-      ui.speakers.value = specs.map(s => ({
+      // The surroundings arrive a few seconds in: speakers the person or the agent placed meanwhile are kept.
+      const own = new Set(specs.map(s => s.id));
+      const placed = sceneStore.get().sources.filter(s => /^speaker-/.test(s.id) && !own.has(s.id));
+      sceneStore.set({ ...sceneStore.get(), sources: [...nextSceneSources, ...placed] }, ['sources']);
+      ui.speakers.value = [...nextSceneSources, ...placed].map(s => ({
         id: s.id,
         label: s.label,
         sound: s.sound,
@@ -696,6 +833,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
         levelDb: s.levelDb,
         enabled: s.enabled,
       }));
+      if (placed.length) syncSpeakersToScene(ui.speakers.value);
     },
     setPointerTarget(win) {
       attachPlacement(win);

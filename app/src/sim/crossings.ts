@@ -2,13 +2,22 @@
 import { DoubleSide, Ray } from 'three';
 import { firstTracedHit, isTraced } from './layers';
 import { surfaceAt } from './library';
-import { panelHits } from './openings';
+import { carvedAt, hasCarved, panelHits } from './openings';
 import type { SimState } from './load';
 import type { Bands, Vec3 } from './types';
 
 export type Crossing = { walls: number; transmission: Bands };
 
 const ray = new Ray();
+const point: Vec3 = [0, 0, 0];
+
+/** A main-mesh hit that counts for sound: in a traced layer, and not the scanned glass or leaf of an opening. */
+function counts(state: SimState, from: Vec3, unit: Vec3, distance: number, triangle: number, carving: boolean): boolean {
+  if (!isTraced(state, triangle)) return false;
+  if (!carving) return true;
+  point[0] = from[0] + unit[0] * distance; point[1] = from[1] + unit[1] * distance; point[2] = from[2] + unit[2] * distance;
+  return !carvedAt(state, point);
+}
 
 /**
  * Walls crossed between `from` and `to`, and the strength left per band after them.
@@ -36,11 +45,7 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     // Only a clear segment passes: the nearest hit is enough, and much cheaper than collecting all of them.
     return firstTracedHit(state, from, [dx, dy, dz], length) ? null : { walls: 0, transmission };
   }
-  const hits: { distance: number; triangle: number }[] = [];
-  for (const h of state.index.bvh.raycast(ray, DoubleSide, 0, length)) {
-    if (h.faceIndex != null && isTraced(state, h.faceIndex)) hits.push({ distance: h.distance, triangle: h.faceIndex });
-  }
-  hits.push(...panelHits(state, from, [dx, dy, dz], length));
+  const hits = segmentHits(state, from, [dx / length, dy / length, dz / length], length);
   if (hits.length === 0) return { walls: 0, transmission };
   const distances = new Float64Array(hits.length);
   const triangles = new Int32Array(hits.length);
@@ -68,6 +73,17 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   return { walls, transmission };
 }
 
+/** Every surface along the segment that counts for sound: main-mesh hits (see `counts`) and closed panels. */
+function segmentHits(state: SimState, from: Vec3, unit: Vec3, length: number): { distance: number; triangle: number }[] {
+  const carving = hasCarved(state);
+  const hits: { distance: number; triangle: number }[] = [];
+  for (const h of state.index.bvh.raycast(ray, DoubleSide, 0, length)) {
+    if (h.faceIndex != null && counts(state, from, unit, h.distance, h.faceIndex, carving)) hits.push({ distance: h.distance, triangle: h.faceIndex });
+  }
+  hits.push(...panelHits(state, from, unit, length));
+  return hits;
+}
+
 export type WallCrossing = { /** metres from `from` to the wall */ distance: number; /** what the wall costs, dB per band (low, mid, high) */ lossDb: Bands };
 
 /**
@@ -80,10 +96,8 @@ export function wallsAlong(state: SimState, from: Vec3, to: Vec3): WallCrossing[
   if (length === 0) return [];
   ray.origin.set(from[0], from[1], from[2]);
   ray.direction.set(dx / length, dy / length, dz / length);
-  const hits = state.index.bvh
-    .raycast(ray, DoubleSide, 0, length)
-    .filter(h => h.faceIndex != null && isTraced(state, h.faceIndex))
-    .sort((a, b) => a.distance - b.distance);
+  // The same hits as crossSegment, closed panels included, so the badges show a closed window too.
+  const hits = segmentHits(state, from, [dx / length, dy / length, dz / length], length).sort((a, b) => a.distance - b.distance);
   const { config } = state;
   const scale = config.transmissionScale;
   const out: WallCrossing[] = [];
@@ -92,9 +106,7 @@ export function wallsAlong(state: SimState, from: Vec3, to: Vec3): WallCrossing[
     const start = hits[i].distance;
     const blocking: Bands = [0, 0, 0];
     for (; i < hits.length && hits[i].distance - start < config.wallMergeDistance; i++) {
-      const tri = hits[i].faceIndex ?? -1;
-      if (tri < 0) continue;
-      const db = surfaceAt(state, tri).blockingDb;
+      const db = surfaceAt(state, hits[i].triangle).blockingDb;
       for (let k = 0; k < 3; k++) if (db[k] > blocking[k]) blocking[k] = db[k];
     }
     out.push({ distance: start, lossDb: [blocking[0] * scale, blocking[1] * scale, blocking[2] * scale] });

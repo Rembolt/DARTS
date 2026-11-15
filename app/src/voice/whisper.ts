@@ -29,6 +29,14 @@ function getWorker(): Worker {
     if (e.data.ok) p.resolve(e.data.text ?? '');
     else p.reject(new Error(e.data.error ?? 'transcription failed'));
   };
+  // A worker that fails to load (the script, the model library) answers nothing: end everything that waits on it,
+  // and make a new worker the next time, so the mic is never stuck on "writing down what you said".
+  worker.onerror = () => {
+    for (const p of pending.values()) p.reject(new Error('the speech model could not start'));
+    pending.clear();
+    worker?.terminate();
+    worker = null;
+  };
   return worker;
 }
 

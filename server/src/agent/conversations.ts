@@ -7,7 +7,7 @@ type Message = Anthropic.Beta.BetaMessageParam;
 type Entry = { messages: Message[]; turns: number; lastUsed: number; running: AbortController | null };
 
 export type Conversations = {
-  /** An unknown or expired id starts a new conversation (fresh). `busy` when 50 are live and a new one is needed. */
+  /** An unknown or expired id starts a new conversation (fresh). At 50 the least recently used idle one is dropped; `busy` only when all 50 are running. */
   open(id: string | undefined): { id: string; fresh: boolean; messages: Message[]; turns: number } | NotPossible;
   cancelRunning(id: string): void;
   setRunning(id: string, controller: AbortController): void;
@@ -36,7 +36,15 @@ export function createConversations(options: { max?: number; idleMs?: number; no
         existing.lastUsed = now();
         return { id, fresh: false, messages: [...existing.messages], turns: existing.turns };
       }
-      if (entries.size >= max) return notPossible('busy');
+      if (entries.size >= max) {
+        // Full: the conversation nobody has used for the longest makes room. Busy only when every one is mid-request.
+        let oldest: string | null = null;
+        for (const [key, entry] of entries) {
+          if (!entry.running && (oldest === null || entry.lastUsed < entries.get(oldest)!.lastUsed)) oldest = key;
+        }
+        if (oldest === null) return notPossible('busy');
+        entries.delete(oldest);
+      }
       const newId = randomUUID();
       entries.set(newId, { messages: [], turns: 0, lastUsed: now(), running: null });
       return { id: newId, fresh: true, messages: [], turns: 0 };

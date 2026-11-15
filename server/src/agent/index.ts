@@ -17,7 +17,8 @@ type CallOptions = { signal: AbortSignal; timeout: number; maxRetries: number };
 export type AgentClient = { beta: { messages: { create(params: Params, options?: CallOptions): Promise<Anthropic.Beta.BetaMessage> } } };
 
 export const MODEL = 'claude-opus-5-5';
-const MAX_MODEL_CALLS = 6;
+// The normal path is 5 calls (search, map, summaries, map and tour, answer); 8 leaves room for an empty search and a retry.
+const MAX_MODEL_CALLS = 8;
 const MAX_TURNS = 20;
 const TOOL_CONCURRENCY = 4;
 const CALL_TIMEOUT_MS = 30_000;
