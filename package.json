@@ -12,7 +12,9 @@
     "dev": "concurrently -n server,app \"npm run dev -w server\" \"npm run dev -w app\"",
     "fetch-bundle": "node scripts/fetch-bundle.mjs",
     "test": "npm run test -w server && npm run test -w app",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w app"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w app",
+    "build-index": "node scripts/build-index.mjs",
+    "warm": "node scripts/warm.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.7",
