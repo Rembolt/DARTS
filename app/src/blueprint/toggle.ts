@@ -52,3 +52,17 @@ export function createToggle(): Toggle {
     },
   };
 }
+
+/**
+ * Listen for the B shortcut on a target (the page's document, and the tour's own window: a click into the tour moves
+ * keyboard focus there, and its key events never reach the page). Returns the function that binds one target.
+ */
+export function bindShortcut(toggle: Toggle, flip: () => void): (target: EventTarget) => void {
+  const onKey = (event: Event) => {
+    const e = event as KeyboardEvent;
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
+    if (toggle.isShortcut(e.key, target && typeof target === 'object' && 'tagName' in target ? target : null)) flip();
+  };
+  return target => target.addEventListener('keydown', onKey);
+}

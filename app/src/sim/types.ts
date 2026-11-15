@@ -40,6 +40,8 @@ export type FromWorker =
       triangles: number;
       loadMs: number; // parse + index + materials + lines, without the download
       timings: { parse: number; index: number; materials: number; lines: number }; // ms
+      /** A copy of the triangles for the solid blueprint (the worker keeps its own for tracing). */
+      mesh: { positions: Float32Array; indices: Uint32Array; materials: Uint8Array };
     }
   | {
       type: 'trace';

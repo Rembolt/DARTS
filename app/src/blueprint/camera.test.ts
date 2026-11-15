@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
+import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three';
 import { applyPose, forwardOf } from './camera';
 import type { Pose } from '../viewer';
 
-const lens = new PerspectiveCamera(70, 1.5, 0.1, 100).projectionMatrix.toArray();
+// A real lens, laid out row by row like the Bundle's Camera.Pose.projection.
+const lens = new PerspectiveCamera(70, 1.5, 0.1, 100).projectionMatrix.clone().transpose().toArray();
 const pose = (yaw: number, pitch: number, position = { x: 0, y: 0, z: 0 }): Pose => ({
   position,
   rotation: { x: pitch, y: yaw },
@@ -13,11 +14,13 @@ const pose = (yaw: number, pitch: number, position = { x: 0, y: 0, z: 0 }): Pose
 const clean = (v: ArrayLike<number>) => Array.from(v, x => +x.toFixed(9) || 0);
 
 describe('applyPose', () => {
-  it('uses the pose projection as is, never its own fov', () => {
-    const odd = Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 2 : i / 100));
+  it('reads the pose projection row by row, as the Bundle sends it, never its own fov', () => {
+    // Measured on the demo tour: the Bundle's projection has -1 at index 14 and the depth term at index 11.
+    const fromTour = [0.786, 0, 0, 0, 0, 1.3032, 0, 0, 0, 0, -1.0001, -0.2, 0, 0, -1, 0];
     const cam = new PerspectiveCamera(10, 3, 1, 2);
-    applyPose(cam, { ...pose(0, 0), projection: odd });
-    expect(cam.projectionMatrix.toArray()).toEqual(odd);
+    applyPose(cam, { ...pose(0, 0), projection: fromTour });
+    const expected = new Matrix4().set(...(fromTour as Parameters<Matrix4['set']>));
+    expect(cam.projectionMatrix.toArray()).toEqual(expected.toArray());
     const id = new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.projectionMatrixInverse).toArray();
     id.forEach((v, i) => expect(v).toBeCloseTo(i % 5 === 0 ? 1 : 0, 9));
   });
@@ -29,6 +32,31 @@ describe('applyPose', () => {
     const ndc = new Vector3(1 + 3 * fx, 1.5 + 3 * fy, 2 + 3 * fz).project(cam);
     expect(ndc.x).toBeCloseTo(0, 6);
     expect(ndc.y).toBeCloseTo(0, 6);
+  });
+
+  it('fits the lens to the canvas aspect, so a resize without a new pose does not stretch the lines', () => {
+    const cam = new PerspectiveCamera();
+    // The pose's lens was made for a 1.5-wide box; the canvas is now 2.5 wide.
+    applyPose(cam, pose(0, 0), 2.5);
+    const m = cam.projectionMatrix.elements;
+    expect(m[0]).toBeCloseTo(m[5] / 2.5, 12);
+    const id = new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.projectionMatrixInverse).toArray();
+    id.forEach((v, i) => expect(v).toBeCloseTo(i % 5 === 0 ? 1 : 0, 9));
+  });
+
+  it('fits an orthographic lens (floor plan) the same way', () => {
+    const ortho = new OrthographicCamera(-15, 15, 10, -10, 0.1, 100).projectionMatrix.clone().transpose().toArray();
+    const cam = new PerspectiveCamera();
+    applyPose(cam, { ...pose(0, 0), projection: ortho }, 2);
+    const m = cam.projectionMatrix.elements;
+    expect(m[0]).toBeCloseTo(m[5] / 2, 12);
+    expect(m[15]).toBe(1);
+  });
+
+  it('keeps the pose lens unchanged when no aspect is given', () => {
+    const cam = new PerspectiveCamera();
+    applyPose(cam, pose(0, 0));
+    expect(cam.projectionMatrix.toArray()).toEqual(new Matrix4().fromArray(lens).transpose().toArray());
   });
 
   it('keeps only the latest pose', () => {

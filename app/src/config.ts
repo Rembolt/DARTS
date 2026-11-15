@@ -48,6 +48,10 @@ export const BLUEPRINT = {
   background: '#ffffff',
   opacity: 0.85,
   lineColor: '#1f3a93',
+  /** 'solid': walls drawn as a white model with their edges on top; 'xray': edges only, seen through the walls. */
+  defaultMode: 'solid' as 'solid' | 'xray',
+  /** Solid mode surface colours, in material id order: wall, floor, ceiling. */
+  surfaceColors: ['#f3f0ea', '#d8d2c4', '#faf8f4'],
 };
 
 export const AUDIO = {

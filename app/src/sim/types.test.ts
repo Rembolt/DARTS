@@ -15,6 +15,7 @@ it('accepts a trace round trip', () => {
   const ready: FromWorker = {
     type: 'ready', lines: new Float32Array(6), boundsMin: [0, 0, 0], boundsMax: [1, 1, 1], triangles: 12, loadMs: 5,
     timings: { parse: 1, index: 2, materials: 1, lines: 1 },
+    mesh: { positions: new Float32Array(9), indices: new Uint32Array(3), materials: new Uint8Array(1) },
   };
   expect(ready.type).toBe('ready');
   expect(req.type).toBe('trace');

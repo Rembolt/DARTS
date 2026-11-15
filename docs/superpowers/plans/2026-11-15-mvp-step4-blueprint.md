@@ -363,9 +363,20 @@ git commit -m "feat: measure blueprint alignment against the tour"
 
 | Item | Value |
 |---|---|
-| Pose convention (Euler order, yaw sign, forward at 0/0) | |
-| Projection layout (column-major?) | |
-| Alignment max / median px: start, rotated, other sweeps | |
-| Alignment max / median px: dollhouse, floor plan | |
-| Chosen `blueprintEdgeAngle` and line count | |
-| Render time per frame with the blueprint shown | |
+| Pose convention (Euler order, yaw sign, forward at 0/0) | `YXZ`, yaw sign +1, −Z at 0/0: confirmed (0 px error) |
+| Projection layout | Row-major in the pose (−1 at index 14). The plan assumed column-major; `applyPose` transposes |
+| Alignment max / median px: start, rotated, other sweeps | 0 / 0 (86 points); 90° turn 0 / 0 (42); pitch −30° 7e-13 / 3e-13 (40); sweep A 7e-13 / 2e-13 (49); sweep B 4e-13 / 2e-13 (10) |
+| Alignment max / median px: dollhouse, floor plan | Dollhouse 0 / 0 (196 points). Floor plan: not measured, the headless software renderer did not finish the mode change |
+| Mesh position (what `worldToScreen` cannot see) | Screenshot at the start: blueprint baseboards, doorway edges and wall corners sit on the tour's |
+| Chosen `blueprintEdgeAngle` and line count | 25° kept, 135,730 lines. Most clutter is the trees outside, which no angle removes |
+| Render time per frame with the blueprint shown | Not measurable headless (software rendering: 210 ms tour only, 128 ms turning with the blueprint) |
+
+## Addendum: Solid mode (asked for after the final review)
+
+The user asked for walls that cover what is behind them, "modeled" with the blueprint lines. Built on the same branch:
+the worker's `ready` message also carries a copy of the triangles and their material ids (`mesh`); the view draws them
+as a lit white model (`MeshLambertMaterial`, both sides, polygon offset so the edges draw on top), grouped by material
+(`groupByMaterial`, `app/src/blueprint/solid.ts`); a header button switches Solid (default, `BLUEPRINT.defaultMode`)
+and X-ray (`app/src/blueprint/mode.ts`); ceilings are hidden in dollhouse and floor plan (`ceilingsVisible`).
+Checked live: alignment still 0 px; inside, the room shows as a white model with its edges and the trees are hidden.
+Open: in dollhouse the tree canopy still covers much of the house (see the group-code note in AGENTS.md).
