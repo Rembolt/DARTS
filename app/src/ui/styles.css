@@ -421,3 +421,36 @@ button.process-line:hover { color: var(--ink-2); }
 .tut-dimsvg { position: absolute; left: 0; top: 0; pointer-events: none; animation: fade var(--enter) var(--ease); }
 .suggest-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: none; }
 .suggest-row .hint-line { justify-self: auto; }
+
+/* ================= Phones (≤640px only: nothing above this width changes) ================= */
+@media (max-width: 640px) {
+  html, body { height: 100dvh; }
+  #ui-root::before { background: linear-gradient(to bottom, rgb(30 20 10 / 0.42), transparent 110px), linear-gradient(to top, rgb(30 20 10 / 0.5), transparent 150px); }
+
+  /* Panels use the width of the screen, not a desktop column. */
+  .panel.floating.p-room, .panel.floating.p-minimap { left: 8px; right: auto; top: 72px; width: min(320px, calc(100% - 16px)); }
+  .panel.floating.p-compass { left: auto; right: 8px; bottom: calc(124px + env(safe-area-inset-bottom)); width: min(236px, calc(100% - 16px)); }
+  .p-fold { width: 36px; height: 36px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .p-bar { padding: 6px 6px 6px 12px; }
+
+  /* The dock and the chat clear the notch and the home bar. */
+  .dock { top: calc(8px + env(safe-area-inset-top)); left: 8px; right: 8px; max-width: none; }
+  .tool { height: 40px; }
+  .notice, .hint { top: calc(64px + env(safe-area-inset-top)); }
+  .chat, .chat.is-open { width: calc(100% - 16px); bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .composer input { font-size: 16px; } /* 16px stops iOS zooming the page when the field is focused */
+  .chat-log { max-height: min(320px, 40dvh); }
+  .msg { max-width: 94%; }
+
+  /* Ideas to ask: one swipeable row, not a stack that covers the tour. */
+  .suggest-row { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; margin: 0 -8px; padding: 0 8px; pointer-events: auto; }
+  .suggest-row::-webkit-scrollbar { display: none; }
+  .suggest-row .hint-line { flex: none; white-space: nowrap; }
+  .chips { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .chip { flex: none; }
+
+  .toast { width: min(340px, calc(100vw - 24px)); }
+  .inspector { width: min(268px, calc(100vw - 24px)); }
+  .tut-card { max-width: calc(100vw - 24px); }
+}

@@ -57,11 +57,17 @@ export type Selection = { kind: 'speaker' | 'opening'; id: string } | null;
 export type AudioState = 'off' | 'starting' | 'on';
 
 const SETTINGS_KEY = 'acoustic:scene';
+/** Phone-sized window (the same 640 px the small-screen CSS uses). */
+function isPhone(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
+}
 function loadFlag(name: string): boolean {
   try {
-    return localStorage.getItem(`panel-shown-${name}`) !== 'false';
+    const saved = localStorage.getItem(`panel-shown-${name}`);
+    if (saved === null) return !isPhone(); // first visit: on a phone the panels would cover the tour, so they start closed
+    return saved !== 'false';
   } catch {
-    return true;
+    return !isPhone();
   }
 }
 
