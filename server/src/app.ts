@@ -77,7 +77,8 @@ export function createApp(
     try {
       const path = await mesh.meshPath(id);
       res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8');
-      res.sendFile(path, err => {
+      // dotfiles: 'allow' because the cache may sit under a dot folder (agent worktrees live in .claude/).
+      res.sendFile(path, { dotfiles: 'allow' }, err => {
         // For example the cached file was deleted or is locked. Answer JSON like every other mesh error.
         if (!err) return;
         if (res.headersSent) {

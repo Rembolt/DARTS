@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import request from 'supertest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
@@ -264,6 +264,15 @@ describe('GET /api/mesh/:id', () => {
     const res = await request(createApp({}, { mesh: failing })).get(`/api/mesh/${MODEL_ID}`);
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: 'Mesh download failed: HTTP 403' });
+  });
+
+  it('serves a cache that sits under a dot folder (agent worktrees live in .claude/)', async () => {
+    const dotDir = join(tempDir(), '.claude', 'cache');
+    mkdirSync(dotDir, { recursive: true });
+    const source = createMeshSource({ cacheDir: dotDir, env: ENV, fetchFn: fakeFetch().fn });
+    const res = await request(createApp({}, { mesh: source })).get(`/api/mesh/${MODEL_ID}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toBe(OBJ);
   });
 
   it('answers JSON when the cached file cannot be sent', async () => {
