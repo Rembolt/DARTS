@@ -24,6 +24,8 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
   let renderer: WebGLRenderer | null = null; // created on first show: a hidden blueprint costs nothing
   let size = canvasSize({ width: canvas.clientWidth, height: canvas.clientHeight }, 1);
   let posed = false;
+  let lastPose: Pose | null = null;
+  const aspect = () => size.width / size.height;
 
   const ensureRenderer = (): WebGLRenderer => {
     if (!renderer) {
@@ -54,7 +56,8 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
       scheduler.request();
     },
     setPose(pose) {
-      applyPose(camera, pose);
+      applyPose(camera, pose, aspect());
+      lastPose = pose;
       posed = true;
       scheduler.request();
     },
@@ -63,6 +66,7 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
     },
     resize(box, pixelRatio) {
       size = canvasSize(box, pixelRatio);
+      if (lastPose) applyPose(camera, lastPose, aspect()); // refit the lens now; the tour may send no new pose
       if (renderer) {
         renderer.setPixelRatio(size.pixelRatio);
         renderer.setSize(size.width, size.height, false);

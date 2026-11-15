@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
+import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three';
 import { applyPose, forwardOf } from './camera';
 import type { Pose } from '../viewer';
 
@@ -32,6 +32,31 @@ describe('applyPose', () => {
     const ndc = new Vector3(1 + 3 * fx, 1.5 + 3 * fy, 2 + 3 * fz).project(cam);
     expect(ndc.x).toBeCloseTo(0, 6);
     expect(ndc.y).toBeCloseTo(0, 6);
+  });
+
+  it('fits the lens to the canvas aspect, so a resize without a new pose does not stretch the lines', () => {
+    const cam = new PerspectiveCamera();
+    // The pose's lens was made for a 1.5-wide box; the canvas is now 2.5 wide.
+    applyPose(cam, pose(0, 0), 2.5);
+    const m = cam.projectionMatrix.elements;
+    expect(m[0]).toBeCloseTo(m[5] / 2.5, 12);
+    const id = new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.projectionMatrixInverse).toArray();
+    id.forEach((v, i) => expect(v).toBeCloseTo(i % 5 === 0 ? 1 : 0, 9));
+  });
+
+  it('fits an orthographic lens (floor plan) the same way', () => {
+    const ortho = new OrthographicCamera(-15, 15, 10, -10, 0.1, 100).projectionMatrix.clone().transpose().toArray();
+    const cam = new PerspectiveCamera();
+    applyPose(cam, { ...pose(0, 0), projection: ortho }, 2);
+    const m = cam.projectionMatrix.elements;
+    expect(m[0]).toBeCloseTo(m[5] / 2, 12);
+    expect(m[15]).toBe(1);
+  });
+
+  it('keeps the pose lens unchanged when no aspect is given', () => {
+    const cam = new PerspectiveCamera();
+    applyPose(cam, pose(0, 0));
+    expect(cam.projectionMatrix.toArray()).toEqual(new Matrix4().fromArray(lens).transpose().toArray());
   });
 
   it('keeps only the latest pose', () => {

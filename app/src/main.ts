@@ -1,5 +1,5 @@
 import { checkBundle, loadMesh, loadServerConfig } from './api';
-import { createToggle } from './blueprint/toggle';
+import { bindShortcut, createToggle } from './blueprint/toggle';
 import { createBlueprint } from './blueprint/view';
 import { simConfig } from './config';
 import { formatSimReady, startSim } from './sim/client';
@@ -34,10 +34,8 @@ function flipBlueprint(): void {
 }
 
 button.addEventListener('click', flipBlueprint);
-document.addEventListener('keydown', event => {
-  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (toggle.isShortcut(event.key, event.target as HTMLElement | null)) flipBlueprint();
-});
+const listenForShortcut = bindShortcut(toggle, flipBlueprint);
+listenForShortcut(document);
 new ResizeObserver(([entry]) => blueprint.resize(entry.contentRect, devicePixelRatio)).observe(stage);
 showToggle();
 
@@ -98,6 +96,8 @@ async function start(): Promise<void> {
   if (!sdk) return;
 
   status.textContent = `Tour playing: model ${config.modelId}`;
+  // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
+  if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
   sdk.Camera.pose.subscribe(pose => {
     poseLine.textContent = formatPose(pose);
     blueprint.setPose(pose);
