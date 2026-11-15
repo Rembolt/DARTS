@@ -1,7 +1,8 @@
 import { checkBundle, loadMesh, loadServerConfig } from './api';
+import { createModeSwitch } from './blueprint/mode';
 import { bindShortcut, createToggle } from './blueprint/toggle';
 import { createBlueprint } from './blueprint/view';
-import { simConfig } from './config';
+import { BLUEPRINT, simConfig } from './config';
 import { formatSimReady, startSim } from './sim/client';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
@@ -12,11 +13,14 @@ const iframe = document.getElementById('viewer') as HTMLIFrameElement;
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('blueprint') as HTMLCanvasElement;
 const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
+const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
 
 const blueprint = createBlueprint(canvas);
 let latestPose: Pose | null = null;
 let blueprintLines: Float32Array | null = null;
 const toggle = createToggle();
+const modeSwitch = createModeSwitch(BLUEPRINT.defaultMode);
+blueprint.setMode(modeSwitch.mode());
 
 function showToggle(): void {
   const v = toggle.view();
@@ -26,6 +30,9 @@ function showToggle(): void {
   button.setAttribute('aria-pressed', String(v.pressed));
   canvas.hidden = !v.pressed;
   blueprint.setVisible(v.pressed);
+  modeButton.disabled = !v.enabled;
+  modeButton.textContent = modeSwitch.label();
+  modeButton.title = modeSwitch.title();
 }
 
 function flipBlueprint(): void {
@@ -34,6 +41,10 @@ function flipBlueprint(): void {
 }
 
 button.addEventListener('click', flipBlueprint);
+modeButton.addEventListener('click', () => {
+  blueprint.setMode(modeSwitch.next());
+  showToggle();
+});
 const listenForShortcut = bindShortcut(toggle, flipBlueprint);
 listenForShortcut(document);
 new ResizeObserver(([entry]) => blueprint.resize(entry.contentRect, devicePixelRatio)).observe(stage);
@@ -53,6 +64,7 @@ async function startSimulation(modelId: string): Promise<void> {
     const ready = await startSim().load(obj, simConfig());
     simLine.textContent = formatSimReady(ready);
     blueprint.setLines(ready.lines);
+    blueprint.setMesh(ready.mesh);
     blueprintLines = ready.lines;
     toggle.ready();
     showToggle();

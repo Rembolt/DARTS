@@ -12,7 +12,8 @@ CoStar data supplies the property context and Vexcel the exterior/aerial context
 Build steps 1 to 4 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
 the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` caches it in `server/cache/`, and the
 sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
-The Blueprint button (or B) shows those lines over the tour through the tour's own camera (`app/src/blueprint/`).
+The Blueprint button (or B) shows the house over the tour through the tour's own camera (`app/src/blueprint/`):
+Solid mode (default) draws the mesh as a white model with its edges, X-ray draws edges only; ceilings hide outside.
 Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
@@ -69,6 +70,9 @@ These are not in the vendor docs and cost time to find out.
 - **Blueprint alignment, measured:** our projection matches `Conversion.worldToScreen` to under 1e-12 px at the start,
   after turning, at two other sweeps and in dollhouse; screenshots show the mesh edges on the tour's walls and doorways,
   so the mesh conversion `(x, y, z) → (x, z, −y)` is right. In dev, `__blueprintCheck()` and `__sdk` are on `window`.
+- **OBJ group codes, partly decoded:** by triangles, `type002` (86,901, mean height 7.7 m, up to 19 m) and `type007`
+  (9,275, 1.2–19 m) look like vegetation, `type003` (3,707, at ground level) like terrain, ungrouped (13,803) like the
+  house. Not proven: the house is also mostly bumpy. Hiding a code on a guess could remove walls.
 - **The mesh includes the trees outside:** most of the 135,730 blueprint lines are vegetation seen through the walls
   (hence the 19 m height). A larger edge angle does not remove them; filtering them is open.
 - **Headless Chrome renders in software here** (about 200 ms a frame for the tour alone): use it for correctness

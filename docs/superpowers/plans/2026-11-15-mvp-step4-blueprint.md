@@ -370,3 +370,13 @@ git commit -m "feat: measure blueprint alignment against the tour"
 | Mesh position (what `worldToScreen` cannot see) | Screenshot at the start: blueprint baseboards, doorway edges and wall corners sit on the tour's |
 | Chosen `blueprintEdgeAngle` and line count | 25° kept, 135,730 lines. Most clutter is the trees outside, which no angle removes |
 | Render time per frame with the blueprint shown | Not measurable headless (software rendering: 210 ms tour only, 128 ms turning with the blueprint) |
+
+## Addendum: Solid mode (asked for after the final review)
+
+The user asked for walls that cover what is behind them, "modeled" with the blueprint lines. Built on the same branch:
+the worker's `ready` message also carries a copy of the triangles and their material ids (`mesh`); the view draws them
+as a lit white model (`MeshLambertMaterial`, both sides, polygon offset so the edges draw on top), grouped by material
+(`groupByMaterial`, `app/src/blueprint/solid.ts`); a header button switches Solid (default, `BLUEPRINT.defaultMode`)
+and X-ray (`app/src/blueprint/mode.ts`); ceilings are hidden in dollhouse and floor plan (`ceilingsVisible`).
+Checked live: alignment still 0 px; inside, the room shows as a white model with its edges and the trees are hidden.
+Open: in dollhouse the tree canopy still covers much of the house (see the group-code note in AGENTS.md).

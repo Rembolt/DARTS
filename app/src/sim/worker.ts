@@ -15,7 +15,8 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
       case 'load': {
         const loaded = loadSim(msg.obj, msg.config);
         state = loaded.state;
-        post(loaded.ready, [loaded.ready.lines.buffer]);
+        const { lines, mesh } = loaded.ready;
+        post(loaded.ready, [lines.buffer, mesh.positions.buffer, mesh.indices.buffer, mesh.materials.buffer]);
         break;
       }
       case 'trace':

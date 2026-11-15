@@ -51,6 +51,8 @@ export function loadSim(obj: ArrayBuffer, config: SimConfig): { state: SimState;
       triangles: mesh.indices.length / 3,
       loadMs: t4 - t0,
       timings: { parse: t1 - t0, index: t2 - t1, materials: t3 - t2, lines: t4 - t3 },
+      // Copies: these buffers are transferred to the page, and the worker's own must stay usable for tracing.
+      mesh: { positions: mesh.positions.slice(), indices: mesh.indices.slice(), materials: materials.slice() },
     },
   };
 }

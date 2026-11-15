@@ -81,3 +81,13 @@ it('numbers materials like the ray index: a ray straight down from inside hits a
   const up = firstHit(state.index, [0.3, 0.5, -0.6], [0, 1, 0]);
   expect(state.materials[up!.triangle]).toBe(MATERIAL_IDS.ceiling);
 });
+
+it('sends a copy of the triangles and their materials for the solid blueprint, keeping its own for tracing', () => {
+  const { state, ready } = loadSim(bytes(boxObj(true)), simConfig());
+  expect(Array.from(ready.mesh.positions)).toEqual(Array.from(state.mesh.positions));
+  expect(Array.from(ready.mesh.indices)).toEqual(Array.from(state.mesh.indices));
+  expect(Array.from(ready.mesh.materials)).toEqual(Array.from(state.materials));
+  expect(ready.mesh.positions.buffer).not.toBe(state.mesh.positions.buffer);
+  expect(ready.mesh.indices.buffer).not.toBe(state.mesh.indices.buffer);
+  expect(ready.mesh.materials.buffer).not.toBe(state.materials.buffer);
+});

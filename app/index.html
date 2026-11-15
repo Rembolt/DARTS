@@ -46,7 +46,8 @@
       #sim {
         color: #bdb;
       }
-      #blueprint-toggle {
+      #blueprint-toggle,
+      #blueprint-mode {
         flex: none;
         height: 20px;
         padding: 0 10px;
@@ -61,7 +62,8 @@
         background: #1f3a93;
         border-color: #1f3a93;
       }
-      #blueprint-toggle:disabled {
+      #blueprint-toggle:disabled,
+      #blueprint-mode:disabled {
         opacity: 0.5;
         cursor: default;
       }
@@ -92,6 +94,7 @@
   <body>
     <header>
       <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
+      <button id="blueprint-mode" type="button" disabled>X-ray</button>
       <p id="status">Loading…</p>
       <p id="pose"></p>
       <p id="sim"></p>
