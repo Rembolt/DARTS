@@ -1,5 +1,6 @@
-// Live settings: materials per surface class, furnishing, and the quality numbers. The tracer reads `state.config` on
-// every call, so replacing values here is all a change needs; the page then re-traces and drops its cached echo times.
+// Live settings: materials per surface class, furnishing, and the quality numbers. The tracer reads `state.config`
+// and `state.table`, so updating both here keeps MVP `config` messages in sync with V2's surface table.
+import { mvpTable, resolveSurfaces } from './library';
 import type { SimState } from './load';
 import type { ToWorker } from './types';
 
@@ -14,4 +15,8 @@ export function applyConfig(state: SimState, msg: ConfigMessage): void {
   if (msg.raysPerTrace !== undefined) c.raysPerTrace = Math.round(clamp(msg.raysPerTrace, 100, 6000));
   if (msg.bounces !== undefined) c.bounces = Math.round(clamp(msg.bounces, 1, 8));
   if (msg.reverbRays !== undefined) c.reverbRays = Math.round(clamp(msg.reverbRays, 100, 6000));
+  if (msg.materials || msg.furnishing !== undefined) {
+    state.table = mvpTable(c);
+    resolveSurfaces(state);
+  }
 }

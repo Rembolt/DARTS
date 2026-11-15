@@ -10,10 +10,12 @@ import { BLUEPRINT, simConfig } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
-import type { FromWorker, Vec3 } from '../sim/types';
+import type { Bands, FromWorker, Vec3 } from '../sim/types';
+import { ui } from '../ui/store';
 import { connectViewer, formatPose, viewerUrl, type MpSdk, type Pose } from '../viewer';
 import { browserSupport, isNotPossibleError, loadStatus, meshProblem, withTimeout } from './checks';
 import { showFailure } from './failure';
+import { mountTourUi } from './ui-bridge';
 
 const VIEWER_TIMEOUT_MS = 30_000;
 const WORKER_LOAD_TIMEOUT_MS = 60_000;
@@ -71,6 +73,7 @@ export function startTour(modelId: string): void {
   const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
   const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
   const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
+  const uiRoot = document.getElementById('ui-root')!;
 
   const blueprint = createBlueprint(canvas);
   canvas.addEventListener('webglcontextlost', () => fail(CONTEXT_LOST));
@@ -91,6 +94,7 @@ export function startTour(modelId: string): void {
     modeButton.disabled = !v.enabled;
     modeButton.textContent = modeSwitch.label();
     modeButton.title = modeSwitch.title();
+    ui.blueprint.value = { enabled: v.enabled, on: v.pressed, label: v.label, mode: modeSwitch.mode() };
   }
 
   function flipBlueprint(): void {
@@ -105,7 +109,10 @@ export function startTour(modelId: string): void {
   });
   const listenForShortcut = bindShortcut(toggle, flipBlueprint);
   listenForShortcut(document);
-  new ResizeObserver(([entry]) => blueprint.resize(entry.contentRect, devicePixelRatio)).observe(stage);
+  new ResizeObserver(([entry]) => {
+    blueprint.resize(entry.contentRect, devicePixelRatio);
+    ui.stage.value = { w: entry.contentRect.width, h: entry.contentRect.height };
+  }).observe(stage);
   showToggle();
 
   // ---- Listener, traces, audio and reverb (mvp-design.md 2 flow, 5.5, 5.6, 6) ----
@@ -122,6 +129,40 @@ export function startTour(modelId: string): void {
   const rooms = new ReverbScheduler();
   let estimateRoom: string | null | undefined; // room whose reverb estimate is applied; undefined: none yet
   let debugLog = false; // dev: log every reverb swap and trace with a timestamp (window.__audio.log(true))
+  let currentEchoTime: Bands | null = null;
+  let pointedHit: { position: Vec3; normal: Vec3 } | null = null;
+
+  const uiBridge = mountTourUi({
+    modelId,
+    uiRoot,
+    blueprint,
+    getSim: () => sim,
+    getAudio: () => audio,
+    getSources: () => sources,
+    setSources: next => {
+      sources = next;
+      traces.invalidate();
+    },
+    getListener: () => listener,
+    getRoomId: () => roomId,
+    getEchoTime: () => currentEchoTime,
+    getPointed: () => pointedHit,
+    toggleBlueprint: flipBlueprint,
+    cycleBlueprintMode: () => {
+      blueprint.setMode(modeSwitch.next());
+      showToggle();
+    },
+    toggleAudio: () => audioButton.click(),
+    retrace: () => {
+      traces.invalidate();
+      traceListener();
+    },
+    clearReverb: () => {
+      rooms.cache.clear();
+      estimateRoom = undefined;
+    },
+  });
+  cleanups.push(() => uiBridge.dispose());
 
   cleanups.push(() => {
     iframe.src = 'about:blank';
@@ -142,10 +183,12 @@ export function startTour(modelId: string): void {
     const line = [statusText, ...notices.values()].join(' · ');
     status.textContent = line;
     status.title = line;
+    ui.status.value = line;
   }
 
   /** Change the reverb. Swapping a convolver's sound can drop the reverb for an instant, so swaps are kept rare. */
   function setEchoTime(echoTime: [number, number, number], why: string): void {
+    currentEchoTime = echoTime;
     if (!reverb) return;
     const swapped = reverb.setEchoTime(echoTime);
     if (swapped && debugLog) console.info(`[${(performance.now() / 1000).toFixed(2)} s] reverb swap (${why})`, echoTime.map(t => t.toFixed(2)));
@@ -180,11 +223,13 @@ export function startTour(modelId: string): void {
     ];
     audio?.setSourcePosition('indoor', pos.indoor);
     audio?.setSourcePosition('outdoor', pos.outdoor);
+    uiBridge.onSourcesInitialized(sources);
     console.info('sources', pos);
     traces.invalidate();
   }
 
   function onWorkerMessage(msg: FromWorker): void {
+    uiBridge.onWorkerMessage(msg);
     switch (msg.type) {
       case 'trace': {
         audio?.applySimResult(msg.sources);
@@ -228,6 +273,7 @@ export function startTour(modelId: string): void {
     audioButton.disabled = state === 'starting' || !viewerReady || !sim;
     audioButton.textContent = state === 'on' ? 'Stop audio' : state === 'starting' ? 'Starting…' : 'Start audio';
     audioButton.setAttribute('aria-pressed', String(state === 'on'));
+    ui.audio.value = state;
   }
 
   // The click handler itself creates the AudioContext, so the browser lets it play.
@@ -260,6 +306,7 @@ export function startTour(modelId: string): void {
         traces.invalidate(); // a fresh trace sets every level at once
         traceListener();
         showAudio('on');
+        uiBridge.onAudioStarted(engine);
         console.info('audio started', { standIns: engine.standIns });
       })
       .catch(err => {
@@ -319,6 +366,7 @@ export function startTour(modelId: string): void {
       simLine.textContent = formatSimReady(ready);
       blueprint.setLines(ready.lines);
       blueprint.setMesh(ready.mesh);
+      uiBridge.onSimReady(ready);
       blueprintLines = ready.lines;
       toggle.ready();
       showToggle();
@@ -387,13 +435,18 @@ export function startTour(modelId: string): void {
 
     showStatus(`Tour playing: ${name ?? 'this property'}`);
     // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
-    if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
+    if (iframe.contentWindow) {
+      listenForShortcut(iframe.contentWindow);
+      uiBridge.setPointerTarget(iframe.contentWindow);
+    }
     sdk.Camera.pose.subscribe(pose => {
       poseLine.textContent = formatPose(pose);
       blueprint.setPose(pose);
       latestPose = pose;
+      const inside = isInside(pose.mode);
+      uiBridge.onPose(pose, inside);
       // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
-      if (!isInside(pose.mode)) return;
+      if (!inside) return;
       listener = [pose.position.x, pose.position.y, pose.position.z];
       if (!sources) placeSources(listener);
       audio?.setListenerPose(pose);
@@ -404,6 +457,7 @@ export function startTour(modelId: string): void {
       const id = firstRoomId(current);
       if (!id || id === roomId) return; // between rooms or outside: keep the last room
       roomId = id;
+      uiBridge.onRoom(id);
       enterRoom();
     });
 
@@ -411,6 +465,8 @@ export function startTour(modelId: string): void {
     let pointed: Vec3 | null = null;
     sdk.Pointer.intersection.subscribe(hit => {
       pointed = [hit.position.x, hit.position.y, hit.position.z];
+      const n = (hit as { normal?: { x: number; y: number; z: number } }).normal;
+      pointedHit = { position: pointed, normal: n ? [n.x, n.y, n.z] : [0, 1, 0] };
     });
     const logPoint = (event: KeyboardEvent) => {
       const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);

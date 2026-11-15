@@ -1,5 +1,5 @@
-// Stand-in doors and windows, placed around the tour's start. Replaced by Property Intelligence openings
-// (`/api/openings/:id`, v2-design.md 7) once that exists; the overlay does not care where the list comes from.
+// Mock openings disabled on main: real openings come from `/api/openings/:id`.
+/*
 import type { Vec3 } from '../sim/types';
 import type { Opening } from './store';
 
@@ -24,3 +24,4 @@ export function mockOpenings(origin: Vec3): Opening[] {
     };
   });
 }
+*/

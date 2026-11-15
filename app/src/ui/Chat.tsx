@@ -189,7 +189,7 @@ export function Chat() {
           </p>
         )}
         {state === 'idle' && !focused && !text && <kbd class="slash">/</kbd>}
-        <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk to Jev'} title="Voice (coming soon)" onClick={toggleVoice}>
+        <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk to Jev'} title="Talk to Jev" onClick={toggleVoice}>
           {ui.listening.value ? <MicOff size={16} /> : <Mic size={16} />}
         </button>
         <button type="submit" class="send" aria-label="Send" disabled={!text.trim() || ui.thinking.value}>

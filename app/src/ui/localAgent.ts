@@ -1,11 +1,10 @@
-// A local stand-in for Jev that shows the whole flow the real agent will use: visible steps, then a suggestion the
-// user applies or dismisses. Replace by pointing `commands.ask` at the relay (v2-design.md 6); the UI does not change.
+// Local stand-in agent disabled on main: `commands.ask` is wired to `app/src/jev/loop.ts` (`/api/jev`).
+/*
 import { interpret } from './assistant';
 import { bandMean } from './compass';
 import { heardDb, outdoorTrim } from './scenario';
 import { commands, setOpeningOpen, ui, type AgentSession, type Opening } from './store';
 
-/** Street noise at the listener, dB below outside, for a given set of openings. Null before the first trace. */
 function streetDb(openings: Opening[]): number | null {
   const outdoor = ui.sound.value?.sources.find(s => s.id === 'outdoor');
   if (!outdoor) return null;
@@ -61,3 +60,4 @@ export async function localAgent(text: string, session: AgentSession): Promise<v
     session.say(intent.reply);
   } else session.say(intent.reply);
 }
+*/

@@ -77,7 +77,8 @@ export const ui = {
   speakers: signal<Speaker[]>([]),
   openings: signal<Opening[]>([]),
   /** True when the opening list is stand-in data, not read from Property Intelligence yet. */
-  openingsAreDemo: signal(true),
+  /** Real openings from Property Intelligence (`/api/openings/:id`). */
+  openingsAreDemo: signal(false),
   selection: signal<Selection>(null),
   /** What a click in placement mode drops. */
   placeKind: signal<'speaker' | 'probe'>('speaker'),
