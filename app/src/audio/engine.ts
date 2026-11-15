@@ -1,30 +1,48 @@
-// The audio engine (mvp-design.md 6): one AudioContext, two looping sources, a limiter.
-// Per source: the direct path and 12 echo slots, each through its own HRTF panner (13 per source, 26 in all),
-// plus a reverb send at 0 that the reverb (step 9) attaches to with `connectReverb`.
+// The audio engine (mvp-design.md 6, v3-design 6): one AudioContext, a list of looping sources, a limiter.
+// A point or ambient voice has the direct path and 12 echo slots (8 from the fifth voice on), each through its own HRTF
+// panner, plus a reverb send at 0 that the reverb attaches to with `connectReverb`. A stereo voice is a plain
+// gain and low-pass: no panner, no echoes, no send.
 import type { Pose } from '../viewer';
 import type { Bands, SourceResult, Vec3 } from '../sim/types';
-import { AUDIO, SLOT_DIRECTIONS, SOURCES } from '../config';
+import { AUDIO, MAX_SOURCES, SLOT_DIRECTIONS, SOUNDS, type SoundId } from '../config';
 import { applyListenerOrientation } from './listener';
-import { distance, indoorDirectGain, outdoorDirectGain, shelfGainsDb } from './levels';
-import { clearDirectGain, echoGain, gainStartTime, planDelayChange, slotPannerPosition } from './echoes';
-import type { SourceId } from './positions';
+import { dbToGain, directGain, distance, shelfGainsDb } from './levels';
+import { clearDirectGain, echoGain, gainStartTime, MERGED_DIRECTIONS, mergeSlots, planDelayChange, slotPannerPosition } from './echoes';
 import { loadSound } from './sounds';
 
-export type { SourceId } from './positions';
+export type SourceKind = 'point' | 'ambient' | 'stereo';
+
+export type SourceSpec = {
+  id: string;
+  label: string;
+  kind: SourceKind;
+  sound: SoundId;
+  position: Vec3;
+  levelDb: number;
+  enabled: boolean;
+  /** stereo only: play once every [min, max] seconds instead of looping. */
+  every?: [number, number];
+};
 
 export type AudioEngine = {
   readonly context: AudioContext;
-  /** Which sources are playing a synthesized stand-in because their file was missing. */
-  readonly standIns: Record<SourceId, boolean>;
+  /** Labels of sources that are not playing: their file was missing, or there were too many. */
+  readonly skipped: string[];
   /** The master bus, before the limiter. The reverb's output connects here. */
   readonly master: AudioNode;
+  /** What `connectReverb` attached the sends to, or null before that (footsteps send their wet part here). */
+  readonly reverbInput: AudioNode | null;
+  /** Add, remove and update voices by id. At most `MAX_SOURCES` enabled sources play. The last call wins. */
+  setSources(specs: SourceSpec[]): Promise<void>;
   /** Move the listener to the tour camera. Call on every pose update. Echo slot panners follow it. */
   setListenerPose(pose: Pick<Pose, 'position' | 'rotation'>): void;
-  /** Place a source, in SDK coordinates (Y-up, metres). */
-  setSourcePosition(id: SourceId, position: Vec3): void;
-  /** Apply a trace result from the sim worker: direct gain and shelves, the 12 echo slots, the reverb send level. */
+  /** Place a source, in SDK coordinates (Y-up, metres). Stereo sources have no place. */
+  setSourcePosition(id: string, position: Vec3): void;
+  /** Apply a trace result from the sim worker: direct gain and shelves, the echo slots, the reverb send level. */
   applySimResult(sources: SourceResult[]): void;
-  /** Attach every source's reverb send to the reverb's input (step 9). Until then the sends go nowhere. */
+  /** Level (dB, added) and low-pass (Hz) of every stereo voice: the outside heard through walls. */
+  setStereoCut(db: number, lowpassHz: number): void;
+  /** Attach every source's reverb send to the reverb's input. Until then the sends go nowhere. */
   connectReverb(input: AudioNode): void;
   /** Dev aid: silence the direct sound or the echoes (the sources keep playing), to find which part breaks up. */
   setPartEnabled(part: 'direct' | 'echoes', on: boolean): void;
@@ -36,6 +54,7 @@ export type EngineOptions = {
   /** Injected for tests; by default a new AudioContext. */
   context?: AudioContext;
   fetch?: typeof fetch;
+  random?: () => number;
 };
 
 type Shelves = { low: BiquadFilterNode; high: BiquadFilterNode };
@@ -50,8 +69,9 @@ type Slot = Shelves & {
   dipEnd: number; // context time when a running dip finishes (0: none)
 };
 
-type Voice = Shelves & {
-  id: SourceId;
+type SpatialVoice = Shelves & {
+  stereo: false;
+  spec: SourceSpec;
   source: AudioBufferSourceNode;
   gain: GainNode;
   panner: PannerNode;
@@ -61,14 +81,26 @@ type Voice = Shelves & {
   directMid: number;
 };
 
+type StereoVoice = {
+  stereo: true;
+  spec: SourceSpec;
+  buffer: AudioBuffer;
+  gain: GainNode;
+  lowpass: BiquadFilterNode;
+  sources: Set<AudioBufferSourceNode>;
+  timer: ReturnType<typeof setTimeout> | null;
+};
+
+type Voice = SpatialVoice | StereoVoice;
+
 /**
  * Create the engine. Call it from a user gesture (the "Start audio" click): the AudioContext is created and
- * resumed before the first await, so the browser lets it play. Sources start at the origin; place them with
- * `setSourcePosition` (see `defaultSourcePositions`).
+ * resumed before the first await, so the browser lets it play. It starts with no sources; give it some with `setSources`.
  */
 export async function createAudioEngine(options: EngineOptions = {}): Promise<AudioEngine> {
   const ctx = options.context ?? new AudioContext();
   const resumed = ctx.resume();
+  const random = options.random ?? Math.random;
 
   const master = ctx.createGain();
   const limiter = ctx.createDynamicsCompressor();
@@ -80,11 +112,6 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   const volume = ctx.createGain();
   volume.gain.value = AUDIO.masterVolume;
   master.connect(limiter).connect(volume).connect(ctx.destination);
-
-  const [indoorSound, outdoorSound] = await Promise.all([
-    loadSound(ctx, 'indoor', SOURCES.indoor.file, AUDIO.standInIndoorSeconds, options.fetch),
-    loadSound(ctx, 'outdoor', SOURCES.outdoor.file, AUDIO.standInOutdoorSeconds, options.fetch),
-  ]);
 
   let listener: Vec3 = [0, 0, 0];
   const now = () => ctx.currentTime;
@@ -112,8 +139,8 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     return panner;
   }
 
-  // The listener sits at the origin and only turns; panners are placed relative to it. So the 24 slot panners
-  // (fixed world directions, 2 m away) never move, and only the 2 direct panners move as you walk. Steps, not glides:
+  // The listener sits at the origin and only turns; panners are placed relative to it. So the slot panners
+  // (fixed world directions, 2 m away) never move, and only the direct panners move as you walk. Steps, not glides:
   // automated panner positions put HRTF panners in Chrome's costly sample-accurate mode, which crackled on movement.
   function placePanner(p: PannerNode, [x, y, z]: Vec3) {
     if (p.positionX) {
@@ -127,7 +154,19 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   /** A world position seen from the listener, which the audio graph keeps at the origin. */
   const relative = (p: Vec3): Vec3 => [p[0] - listener[0], p[1] - listener[1], p[2] - listener[2]];
 
-  function makeVoice(id: SourceId, buffer: AudioBuffer): Voice {
+  const voices = new Map<string, Voice>();
+  const enabled = { direct: true, echoes: true };
+  let lastResults: SourceResult[] = [];
+  let reverbInput: AudioNode | null = null;
+  let stereoCut = { db: 0, hz: 20000 };
+  let skipped: string[] = [];
+  let generation = 0;
+  let stopped = false;
+  const buffers = new Map<string, Promise<AudioBuffer | null>>(); // by file: each sound is fetched once
+
+  const slotDirs = (index: number): Vec3[] => (index < 4 ? SLOT_DIRECTIONS : MERGED_DIRECTIONS);
+
+  function makeSpatialVoice(spec: SourceSpec, buffer: AudioBuffer, dirs: Vec3[]): SpatialVoice {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -138,7 +177,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     source.connect(shelves.low);
     shelves.high.connect(gain).connect(panner);
 
-    const slots = SLOT_DIRECTIONS.map((dir): Slot => {
+    const slots = dirs.map((dir): Slot => {
       const delay = ctx.createDelay(AUDIO.maxDelay);
       delay.delayTime.value = 0;
       const s = makeShelves();
@@ -154,21 +193,31 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     const send = ctx.createGain();
     send.gain.value = 0;
     source.connect(send);
+    if (reverbInput) send.connect(reverbInput);
 
-    return { id, source, ...shelves, gain, panner, slots, send, position: [0, 0, 0], directMid: 1 };
+    return { stereo: false, spec, source, ...shelves, gain, panner, slots, send, position: [...spec.position], directMid: 1 };
   }
 
-  const voices: Record<SourceId, Voice> = {
-    indoor: makeVoice('indoor', indoorSound.buffer),
-    outdoor: makeVoice('outdoor', outdoorSound.buffer),
+  function makeStereoVoice(spec: SourceSpec, buffer: AudioBuffer): StereoVoice {
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = stereoCut.hz;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    lowpass.connect(gain).connect(master);
+    return { stereo: true, spec, buffer, gain, lowpass, sources: new Set(), timer: null };
+  }
+
+  const loadFile = (file: string) => {
+    let p = buffers.get(file);
+    if (!p) buffers.set(file, (p = loadSound(ctx, file, options.fetch)));
+    return p;
   };
 
-  function directGain(v: Voice): number {
-    return v.id === 'indoor' ? indoorDirectGain(distance(listener, v.position), v.directMid) : outdoorDirectGain(v.directMid);
+  function updateGain(v: Voice) {
+    if (v.stereo) smooth(v.gain.gain, dbToGain(v.spec.levelDb + stereoCut.db));
+    else smooth(v.gain.gain, enabled.direct ? directGain(v.spec.kind, v.spec.levelDb, distance(listener, v.position), v.directMid) : 0);
   }
-  const enabled = { direct: true, echoes: true };
-  let lastResults: SourceResult[] = [];
-  const updateGain = (v: Voice) => smooth(v.gain.gain, enabled.direct ? directGain(v) : 0);
 
   function setShelves(s: Shelves, bands: Bands, at = now()) {
     const { low, high } = shelfGainsDb(bands);
@@ -205,73 +254,180 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     slot.gainValue = plan.gain;
   }
 
-  for (const v of Object.values(voices)) {
-    updateGain(v);
-    v.source.start();
+  function playStereoOnce(v: StereoVoice, loop: boolean) {
+    const source = ctx.createBufferSource();
+    source.buffer = v.buffer;
+    source.loop = loop;
+    source.connect(v.lowpass);
+    v.sources.add(source);
+    source.onended = () => { v.sources.delete(source); source.disconnect(); };
+    source.start();
   }
+
+  function scheduleStereo(v: StereoVoice, first: boolean) {
+    const every = v.spec.every;
+    if (!every) return;
+    const wait = first ? random() * 10 : every[0] + random() * (every[1] - every[0]); // the first pass comes early
+    v.timer = setTimeout(() => {
+      if (stopped) return;
+      playStereoOnce(v, false);
+      scheduleStereo(v, false);
+    }, wait * 1000);
+  }
+
+  function startVoice(v: Voice) {
+    if (v.stereo) {
+      if (v.spec.every) scheduleStereo(v, true);
+      else playStereoOnce(v, true);
+    } else {
+      placePanner(v.panner, relative(v.position));
+      v.source.start();
+    }
+    updateGain(v);
+  }
+
+  function stopVoice(v: Voice) {
+    if (v.stereo) {
+      if (v.timer) clearTimeout(v.timer);
+      v.timer = null;
+      for (const s of v.sources) s.stop();
+      v.sources.clear();
+    } else {
+      v.source.stop();
+    }
+  }
+
+  const sameDirs = (a: Vec3[], b: Vec3[]) => a.length === b.length && a.every((d, i) => d === b[i]);
+
+  async function setSources(specs: SourceSpec[]): Promise<void> {
+    const mine = ++generation;
+    const wanted = specs.filter(s => s.enabled);
+    const active = wanted.slice(0, MAX_SOURCES);
+    const over = wanted.slice(MAX_SOURCES).map(s => `${s.label} (too many sources)`);
+    const loaded = await Promise.all(active.map(s => loadFile(SOUNDS[s.sound].file)));
+    await resumed;
+    if (stopped || mine !== generation) return; // a newer call replaces this one
+
+    const missing: string[] = [];
+    const keep: { spec: SourceSpec; buffer: AudioBuffer }[] = [];
+    active.forEach((spec, i) => {
+      const buffer = loaded[i];
+      if (buffer) keep.push({ spec, buffer });
+      else missing.push(spec.label);
+    });
+    skipped = [...missing, ...over];
+
+    const ids = new Set(keep.map(k => k.spec.id));
+    for (const [id, v] of voices) {
+      if (!ids.has(id)) { stopVoice(v); voices.delete(id); }
+    }
+
+    keep.forEach(({ spec, buffer }, index) => {
+      const dirs = slotDirs(index);
+      let existing = voices.get(spec.id);
+      if (existing && !(existing.spec.sound === spec.sound && existing.spec.kind === spec.kind
+        && (existing.stereo || sameDirs(existing.slots.map(s => s.dir), dirs)))) {
+        stopVoice(existing);
+        voices.delete(spec.id);
+        existing = undefined;
+      }
+      if (existing) {
+        const everyChanged = JSON.stringify(existing.spec.every) !== JSON.stringify(spec.every);
+        existing.spec = spec;
+        if (existing.stereo) {
+          if (everyChanged) { stopVoice(existing); startVoice(existing); return; }
+        } else {
+          existing.position = [...spec.position];
+          placePanner(existing.panner, relative(existing.position));
+        }
+        updateGain(existing);
+        return;
+      }
+      const v = spec.kind === 'stereo' ? makeStereoVoice(spec, buffer) : makeSpatialVoice(spec, buffer, dirs);
+      voices.set(spec.id, v);
+      startVoice(v);
+    });
+  }
+
+  function applyResults(results: SourceResult[]): void {
+    if (stopped) return;
+    lastResults = results;
+    for (const r of results) {
+      const v = voices.get(r.id);
+      if (!v || v.stereo) continue;
+      v.directMid = r.direct[1];
+      setShelves(v, r.direct);
+      updateGain(v);
+      const clear = clearDirectGain(v.spec.kind, v.spec.levelDb, r.distance);
+      const slots = v.slots.length === r.slots.length ? r.slots : mergeSlots(r.slots);
+      v.slots.forEach((slot, i) => {
+        const s = slots[i];
+        if (s) applySlot(slot, s.energy, s.delay, clear);
+        else applySlot(slot, [0, 0, 0], slot.delayValue, clear);
+      });
+      // Reverb send (mvp-design.md 6): sqrt(lateEnergy mid) x reverbGain. Silent until connectReverb.
+      smooth(v.send.gain, Math.sqrt(Math.max(r.lateEnergy[1], 0)) * AUDIO.reverbGain);
+    }
+  }
+
   await resumed;
 
-  let stopped = false;
   return {
     context: ctx,
     master,
-    standIns: { indoor: indoorSound.standIn, outdoor: outdoorSound.standIn },
+    get skipped() { return skipped; },
+    get reverbInput() { return reverbInput; },
+
+    setSources,
 
     setListenerPose(pose) {
       if (stopped) return;
       listener = [pose.position.x, pose.position.y, pose.position.z];
       applyListenerOrientation(ctx.listener, pose.rotation, now());
-      updateGain(voices.indoor); // only the indoor direct level depends on distance between traces
-      for (const v of Object.values(voices)) placePanner(v.panner, relative(v.position));
+      for (const v of voices.values()) {
+        if (v.stereo) continue;
+        if (v.spec.kind === 'point') updateGain(v); // only a point source's direct level depends on distance between traces
+        placePanner(v.panner, relative(v.position));
+      }
     },
 
     setSourcePosition(id, position) {
       if (stopped) return;
-      const v = voices[id];
+      const v = voices.get(id);
+      if (!v || v.stereo) return;
       v.position = [...position];
       placePanner(v.panner, relative(v.position));
       updateGain(v);
     },
 
+    setStereoCut(db, lowpassHz) {
+      stereoCut = { db, hz: lowpassHz };
+      for (const v of voices.values()) {
+        if (!v.stereo) continue;
+        v.lowpass.frequency.value = lowpassHz;
+        updateGain(v);
+      }
+    },
+
     setPartEnabled(part, on) {
       enabled[part] = on;
-      for (const v of Object.values(voices)) updateGain(v);
+      for (const v of voices.values()) if (!v.stereo) updateGain(v);
       if (lastResults.length) applyResults(lastResults);
     },
 
     applySimResult: applyResults,
 
     connectReverb(input) {
-      for (const v of Object.values(voices)) v.send.connect(input);
+      reverbInput = input;
+      for (const v of voices.values()) if (!v.stereo) v.send.connect(input);
     },
 
     async stop() {
       if (stopped) return;
       stopped = true;
-      for (const v of Object.values(voices)) v.source.stop();
+      generation++;
+      for (const v of voices.values()) stopVoice(v);
       await ctx.close();
     },
   };
-
-  function applyResults(results: SourceResult[]): void {
-    {
-      if (stopped) return;
-      lastResults = results;
-      for (const r of results) {
-        const v = voices[r.id as SourceId];
-        if (!v) continue;
-        v.directMid = r.direct[1];
-        setShelves(v, r.direct);
-        updateGain(v);
-        const clear = clearDirectGain(v.id, r.distance);
-        v.slots.forEach((slot, i) => {
-          const s = r.slots[i];
-          if (s) applySlot(slot, s.energy, s.delay, clear);
-          else applySlot(slot, [0, 0, 0], slot.delayValue, clear);
-        });
-        // Reverb send (mvp-design.md 6): sqrt(lateEnergy mid) × reverbGain. Silent until connectReverb.
-        smooth(v.send.gain, Math.sqrt(Math.max(r.lateEnergy[1], 0)) * AUDIO.reverbGain);
-      }
-    }
-  }
 }

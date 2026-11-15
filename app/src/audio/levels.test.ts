@@ -1,20 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { dbToGain, distance, indoorDirectGain, outdoorDirectGain, shelfGainsDb } from './levels';
+import { dbToGain, directGain, distance, shelfGainsDb } from './levels';
 import { AUDIO } from '../config';
 
-describe('gain formulas (mvp-design.md 6)', () => {
-  it('indoor fades as 1/D beyond 1 m and holds full level inside 1 m', () => {
-    expect(indoorDirectGain(0)).toBe(1);
-    expect(indoorDirectGain(0.5)).toBe(1);
-    expect(indoorDirectGain(4)).toBe(0.25);
-    expect(indoorDirectGain(4, 0.25)).toBeCloseTo(0.125);
-    expect(indoorDirectGain(2, -1)).toBe(0);
+describe('gain formulas (mvp-design.md 6, v2-design 5.1)', () => {
+  it('point: fades as 1/D beyond 1 m, holds full level inside 1 m, scaled by its level', () => {
+    expect(directGain('point', 0, 0)).toBe(1);
+    expect(directGain('point', 0, 0.5)).toBe(1);
+    expect(directGain('point', 0, 4)).toBe(0.25);
+    expect(directGain('point', 0, 4, 0.25)).toBeCloseTo(0.125);
+    expect(directGain('point', 0, 2, -1)).toBe(0);
+    expect(directGain('point', -6, 1)).toBeCloseTo(dbToGain(-6));
   });
 
-  it('outdoor sits 12 dB below the song and does not depend on distance', () => {
-    expect(outdoorDirectGain()).toBeCloseTo(dbToGain(-12));
-    expect(outdoorDirectGain()).toBeCloseTo(0.2512, 4);
-    expect(outdoorDirectGain(0.25)).toBeCloseTo(0.5 * dbToGain(-12));
+  it('directGain: ambient ignores distance, point fades', () => {
+    expect(directGain('ambient', -12, 5)).toBeCloseTo(directGain('ambient', -12, 50), 6);
+    expect(directGain('point', 0, 2)).toBeGreaterThan(directGain('point', 0, 8));
+    expect(directGain('ambient', -12, 1)).toBeCloseTo(0.2512, 3);
+  });
+
+  it('ambient: the level times sqrt(direct mid energy), as the MVP highway', () => {
+    expect(directGain('ambient', -12, 30, 0.25)).toBeCloseTo(0.5 * dbToGain(-12));
+  });
+
+  it('stereo: its level only', () => {
+    expect(directGain('stereo', -10, 100)).toBeCloseTo(dbToGain(-10));
   });
 
   it('measures distance in metres', () => {

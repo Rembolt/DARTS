@@ -1,12 +1,12 @@
-import { notPossible, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
-import { checkBundle, loadMesh, loadServerConfig, UNREACHABLE, type ServerConfig } from '../api';
+import { notPossible, type AreaSummary, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
+import { checkBundle, getJson, loadMesh, loadServerConfig, UNREACHABLE, type ServerConfig } from '../api';
 import { createModeSwitch } from '../blueprint/mode';
 import { bindShortcut, createToggle } from '../blueprint/toggle';
 import { createBlueprint } from '../blueprint/view';
-import { createAudioEngine, type AudioEngine } from '../audio/engine';
-import { defaultSourcePositions } from '../audio/positions';
+import { createAudioEngine, type AudioEngine, type SourceSpec } from '../audio/engine';
+import { surroundingSources, surroundingsNotice } from '../audio/surroundings';
 import { Reverb } from '../audio/reverb';
-import { BLUEPRINT, simConfig } from '../config';
+import { BLUEPRINT, MAX_SOURCES, simConfig } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
@@ -112,7 +112,9 @@ export function startTour(modelId: string): void {
 
   let sim: SimClient | null = null; // set once the worker has the mesh
   let viewerReady = false;
-  let sources: { id: string; position: Vec3 }[] | null = null; // placed from the tour's first inside position
+  let sourceSpecs: SourceSpec[] = []; // what plays: the surroundings, once the first inside position is known
+  let sources: { id: string; position: Vec3 }[] | null = null; // the traced ones (enabled, not stereo); null until placed
+  let placed = false;
   let listener: Vec3 | null = null; // last position inside the house
   let roomId: string | null = null; // last room from Room.current
   let audio: AudioEngine | null = null;
@@ -152,7 +154,7 @@ export function startTour(modelId: string): void {
   }
 
   function sendTrace(position: Vec3 | null): void {
-    if (!position || !sim || !sources) return;
+    if (!position || !sim || !sources?.length) return;
     sim.worker.postMessage({ type: 'trace', id: ++traceId, listener: position, sources });
   }
 
@@ -172,16 +174,40 @@ export function startTour(modelId: string): void {
     sendReverb(d.request);
   }
 
-  function placeSources(start: Vec3): void {
-    const pos = defaultSourcePositions(start);
-    sources = [
-      { id: 'indoor', position: pos.indoor },
-      { id: 'outdoor', position: pos.outdoor },
-    ];
-    audio?.setSourcePosition('indoor', pos.indoor);
-    audio?.setSourcePosition('outdoor', pos.outdoor);
-    console.info('sources', pos);
+  /** The sources that play now. Traced ones (not stereo) go to the worker; all go to the audio engine. */
+  function applySourceSpecs(specs: SourceSpec[]): void {
+    sourceSpecs = specs;
+    sources = specs.filter(sp => sp.enabled && sp.kind !== 'stereo').slice(0, MAX_SOURCES).map(({ id, position }) => ({ id, position }));
+    void pushSources();
     traces.invalidate();
+    traceListener();
+  }
+
+  async function pushSources(): Promise<void> {
+    if (!audio) return;
+    const engine = audio;
+    await engine.setSources(sourceSpecs);
+    if (audio !== engine) return;
+    if (engine.skipped.length) notices.set('skipped', `Not playing (file missing): ${engine.skipped.join(', ')}`);
+    else notices.delete('skipped');
+    showStatus();
+  }
+
+  /** Once the first inside position is known: place the outside sounds from the property's surroundings (v3-design 6). */
+  async function placeSources(start: Vec3, modelId: string): Promise<void> {
+    applySourceSpecs([]);
+    try {
+      const area = await getJson<AreaSummary>(`/api/surroundings/${modelId}`);
+      if (failed) return;
+      const notice = surroundingsNotice(area);
+      if (notice) notices.set('surroundings', notice);
+      applySourceSpecs(surroundingSources(area, start));
+      audio?.setStereoCut(-25, 800);
+    } catch (err) {
+      console.warn('surroundings:', err instanceof Error ? err.message : err);
+      notices.set('surroundings', 'Surroundings not available: outside sounds are off');
+    }
+    showStatus();
   }
 
   function onWorkerMessage(msg: FromWorker): void {
@@ -255,12 +281,13 @@ export function startTour(modelId: string): void {
         estimateRoom = undefined;
         const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
         if (known) setEchoTime(known, 'cached room');
-        if (sources) for (const s of sources) engine.setSourcePosition(s.id as 'indoor' | 'outdoor', s.position);
+        engine.setStereoCut(-25, 800);
+        void pushSources();
         if (latestPose && isInside(latestPose.mode)) engine.setListenerPose(latestPose);
         traces.invalidate(); // a fresh trace sets every level at once
         traceListener();
         showAudio('on');
-        console.info('audio started', { standIns: engine.standIns });
+        console.info('audio started');
       })
       .catch(err => {
         // Spec 4.4: an audio context that won't start means this browser can't run 3D audio.
@@ -395,7 +422,10 @@ export function startTour(modelId: string): void {
       // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
       if (!isInside(pose.mode)) return;
       listener = [pose.position.x, pose.position.y, pose.position.z];
-      if (!sources) placeSources(listener);
+      if (!placed) {
+        placed = true;
+        void placeSources(listener, modelId);
+      }
       audio?.setListenerPose(pose);
       traceListener();
     });

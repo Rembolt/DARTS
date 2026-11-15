@@ -1,5 +1,6 @@
 // Every hardcoded value of the MVP (mvp-design.md section 4). Later versions change these from settings or an agent.
 import type { Material, SimConfig, Vec3 } from './sim/types';
+import type { SourceKind } from './audio/engine';
 
 // Starting values from memory, not from a measured table. See mvp-design.md 4.2.
 export const MATERIALS: SimConfig['materials'] = {
@@ -26,22 +27,37 @@ export const SIM = {
   speedOfSound: 343,
 } satisfies Omit<SimConfig, 'materials' | 'slotDirections'>;
 
-export const SOURCES = {
-  indoor: {
-    id: 'indoor',
-    file: '/audio/indoor.ogg', // Beethoven, Minuet in G (public domain recording); see app/public/audio/CREDITS.md
-    position: null as Vec3 | null, // null: use the tour's start position
-    startHeightOffset: -0.4,
-  },
-  outdoor: {
-    id: 'outdoor',
-    file: '/audio/outdoor.ogg', // "Highway from Bridge, Center" (public domain); see app/public/audio/CREDITS.md
-    distance: 25, // metres from the tour's start position
-    compassAngleDeg: 0, // pick by ear (open question Q1)
-    height: 1.5,
-    levelDb: -12,
-  },
+/** The sound library (v2-design 5.3, v3-design 6.6). Every file is CC0 or public domain: app/public/audio/CREDITS.md. */
+export type SoundId = 'highway' | 'road' | 'city_ambience' | 'nature_ambience' | 'industrial_ambience' | 'commercial_ambience'
+  | 'residential_ambience' | 'train' | 'plane' | 'music' | 'conversation' | 'footstep_hard' | 'footstep_soft';
+
+/**
+ * Per sound: its file, the kind it plays as and its default level in dB relative to the MVP song. Outside sounds placed
+ * from the surroundings take their level from the facade level instead (audio/surroundings.ts).
+ * `road` and `residential_ambience` are not in V2's table: road like the city loop, residential from its 50 dB facade.
+ * Footsteps play from `footstep_<floor>_1..4.ogg` (audio/footsteps.ts); their entries here only carry the level.
+ */
+export const SOUNDS: Record<SoundId, { file: string; kind: SourceKind; levelDb: number }> = {
+  music: { file: '/audio/music.ogg', kind: 'point', levelDb: 0 },
+  conversation: { file: '/audio/conversation.ogg', kind: 'point', levelDb: -6 },
+  highway: { file: '/audio/highway.ogg', kind: 'ambient', levelDb: -12 },
+  road: { file: '/audio/road.ogg', kind: 'ambient', levelDb: -14 },
+  city_ambience: { file: '/audio/city_ambience.ogg', kind: 'ambient', levelDb: -14 },
+  nature_ambience: { file: '/audio/nature_ambience.ogg', kind: 'ambient', levelDb: -20 },
+  industrial_ambience: { file: '/audio/industrial_ambience.ogg', kind: 'ambient', levelDb: -14 },
+  commercial_ambience: { file: '/audio/commercial_ambience.ogg', kind: 'ambient', levelDb: -16 },
+  residential_ambience: { file: '/audio/residential_ambience.ogg', kind: 'ambient', levelDb: -34 },
+  train: { file: '/audio/train.ogg', kind: 'stereo', levelDb: -10 },
+  plane: { file: '/audio/plane.ogg', kind: 'stereo', levelDb: -10 },
+  footstep_hard: { file: '/audio/footstep_hard.ogg', kind: 'point', levelDb: -18 },
+  footstep_soft: { file: '/audio/footstep_soft.ogg', kind: 'point', levelDb: -18 },
 };
+
+/** At most this many sources play at once (v2-design 5.2); from the fifth on, a voice gets 8 echo slots, not 12. */
+export const MAX_SOURCES = 6;
+
+/** Rotates every geo bearing in the tour (v3-design 6.4). 0: the mesh's -Z axis is taken as north (not measured). */
+export const NORTH_OFFSET_DEG = 0;
 
 /** The blueprint view's look (mvp-design.md 7). The edge angle that picks its lines is `SIM.blueprintEdgeAngle`. */
 export const BLUEPRINT = {
@@ -81,9 +97,6 @@ export const AUDIO = {
   limiterRelease: 0.25,
   /** Shelf filters never go further than this from flat, in dB, whatever the simulation says. */
   maxShelfDb: 24,
-  /** Stand-in loops synthesized when a sound file is missing (seconds). */
-  standInIndoorSeconds: 4,
-  standInOutdoorSeconds: 8,
 };
 
 /** The 12 fixed echo slot directions: the corners of an icosahedron (mvp-design.md 5.4). */

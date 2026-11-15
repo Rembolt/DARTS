@@ -1,6 +1,7 @@
-// Gain and filter values for the audio engine (mvp-design.md 6). Pure, so they are tested without Web Audio.
+// Gain and filter values for the audio engine (mvp-design.md 6, v2-design 5.1). Pure, so they are tested without Web Audio.
 import type { Bands, Vec3 } from '../sim/types';
-import { AUDIO, SOURCES } from '../config';
+import { AUDIO } from '../config';
+import type { SourceKind } from './engine';
 
 export const dbToGain = (db: number) => 10 ** (db / 20);
 
@@ -8,14 +9,18 @@ export function distance(a: Vec3, b: Vec3): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-/** Indoor direct gain: `sqrt(direct mid) / max(D, 1)`. Step 5 has no simulation yet, so `directMid` defaults to 1. */
-export function indoorDirectGain(d: number, directMid = 1): number {
-  return Math.sqrt(Math.max(directMid, 0)) / Math.max(d, 1);
-}
-
-/** Outdoor direct gain: `sqrt(direct mid) × outdoor level`; no fade with distance. */
-export function outdoorDirectGain(directMid = 1): number {
-  return Math.sqrt(Math.max(directMid, 0)) * dbToGain(SOURCES.outdoor.levelDb);
+/**
+ * A source's direct gain. `directMid` is the trace's direct energy in the mid band (1 before the first trace), so its
+ * square root scales the amplitude, as the MVP's two curves did.
+ * - point (MVP indoor): `sqrt(directMid) / max(D, 1) × level`, full level inside 1 m.
+ * - ambient (MVP outdoor): `sqrt(directMid) × level`, no fade with distance.
+ * - stereo: its level; never traced, so `directMid` and `d` are ignored.
+ */
+export function directGain(kind: SourceKind, levelDb: number, d: number, directMid = 1): number {
+  const level = dbToGain(levelDb);
+  if (kind === 'stereo') return level;
+  const amp = Math.sqrt(Math.max(directMid, 0));
+  return kind === 'point' ? (amp / Math.max(d, 1)) * level : amp * level;
 }
 
 /**
