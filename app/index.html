@@ -81,7 +81,8 @@
       }
       #blueprint-toggle,
       #blueprint-mode,
-      #audio-toggle {
+      #audio-toggle,
+      #footsteps-toggle {
         flex: none;
         height: 20px;
         padding: 0 10px;
@@ -102,7 +103,8 @@
       }
       #blueprint-toggle:disabled,
       #blueprint-mode:disabled,
-      #audio-toggle:disabled {
+      #audio-toggle:disabled,
+      #footsteps-toggle:disabled {
         opacity: 0.5;
         cursor: default;
       }
@@ -136,6 +138,7 @@
         <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
         <button id="blueprint-mode" type="button" disabled>X-ray</button>
         <button id="audio-toggle" type="button" aria-pressed="false">Start audio</button>
+        <button id="footsteps-toggle" type="button" aria-pressed="true" disabled title="Start audio first">Footsteps</button>
         <p id="status">Loading…</p>
         <p id="pose"></p>
         <p id="sim"></p>

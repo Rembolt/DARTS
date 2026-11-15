@@ -5,6 +5,7 @@ import { bindShortcut, createToggle } from '../blueprint/toggle';
 import { createBlueprint } from '../blueprint/view';
 import { createAudioEngine, type AudioEngine, type SourceSpec } from '../audio/engine';
 import { surroundingSources, surroundingsNotice } from '../audio/surroundings';
+import { createFootsteps, type Footsteps } from '../audio/footsteps';
 import { Reverb } from '../audio/reverb';
 import { BLUEPRINT, MAX_SOURCES, simConfig } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
@@ -71,6 +72,7 @@ export function startTour(modelId: string): void {
   const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
   const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
   const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
+  const stepsButton = document.getElementById('footsteps-toggle') as HTMLButtonElement;
 
   const blueprint = createBlueprint(canvas);
   canvas.addEventListener('webglcontextlost', () => fail(CONTEXT_LOST));
@@ -119,6 +121,8 @@ export function startTour(modelId: string): void {
   let roomId: string | null = null; // last room from Room.current
   let audio: AudioEngine | null = null;
   let reverb: Reverb | null = null;
+  let footsteps: Footsteps | null = null;
+  let stepsOn = true;
   let traceId = 0;
   const traces = new TraceScheduler();
   const rooms = new ReverbScheduler();
@@ -131,6 +135,8 @@ export function startTour(modelId: string): void {
     sim = null;
     reverb?.dispose();
     reverb = null;
+    footsteps?.dispose();
+    footsteps = null;
     const old = audio;
     audio = null;
     if (old) void old.stop();
@@ -256,6 +262,29 @@ export function startTour(modelId: string): void {
     audioButton.setAttribute('aria-pressed', String(state === 'on'));
   }
 
+  function showSteps(missing = false): void {
+    stepsButton.disabled = !footsteps;
+    stepsButton.setAttribute('aria-pressed', String(stepsOn && !!footsteps));
+    stepsButton.title = footsteps ? 'Footsteps on sweep changes (F)' : missing ? 'Footstep sounds are missing' : 'Start audio first';
+  }
+
+  async function startFootsteps(engine: AudioEngine): Promise<void> {
+    const made = await createFootsteps(engine.context, { master: engine.master, reverbInput: engine.reverbInput });
+    if (audio !== engine) { made?.dispose(); return; }
+    footsteps = made;
+    footsteps?.setEnabled(stepsOn);
+    showSteps(!made);
+  }
+
+  function flipSteps(): void {
+    if (!footsteps) return;
+    stepsOn = !stepsOn;
+    footsteps.setEnabled(stepsOn);
+    showSteps();
+  }
+  stepsButton.addEventListener('click', flipSteps);
+  showSteps();
+
   // The click handler itself creates the AudioContext, so the browser lets it play.
   audioButton.addEventListener('click', () => {
     if (audio) {
@@ -263,6 +292,9 @@ export function startTour(modelId: string): void {
       audio = null;
       reverb?.dispose();
       reverb = null;
+      footsteps?.dispose();
+      footsteps = null;
+      showSteps();
       showAudio('off');
       void old.stop();
       return;
@@ -278,6 +310,7 @@ export function startTour(modelId: string): void {
         reverb = new Reverb(engine.context);
         engine.connectReverb(reverb.input);
         reverb.output.connect(engine.master);
+        void startFootsteps(engine);
         estimateRoom = undefined;
         const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
         if (known) setEchoTime(known, 'cached room');
@@ -447,6 +480,22 @@ export function startTour(modelId: string): void {
       if (event.key.toLowerCase() !== 'p' || event.repeat || typing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (pointed) console.info('point', JSON.stringify(pointed.map(v => +v.toFixed(3))));
     };
+    const stepKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+      if (event.key.toLowerCase() !== 'f' || event.repeat || typing || event.ctrlKey || event.metaKey || event.altKey) return;
+      flipSteps();
+    };
+    document.addEventListener('keydown', stepKey);
+    iframe.contentWindow?.addEventListener('keydown', stepKey);
+    // A step sound for each jump to a new sweep, not for the first pose and not outside the house (v3-design 6.5).
+    let lastSweep: string | undefined;
+    sdk.Sweep.current.subscribe(sweep => {
+      const id = sweep.sid ?? sweep.id;
+      const first = lastSweep === undefined;
+      const changed = id !== lastSweep;
+      lastSweep = id;
+      if (!first && changed && latestPose && isInside(latestPose.mode)) footsteps?.walk(1.0);
+    });
     document.addEventListener('keydown', logPoint);
     iframe.contentWindow?.addEventListener('keydown', logPoint);
 
