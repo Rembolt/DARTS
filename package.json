@@ -14,6 +14,7 @@
     "test": "npm run test -w server && npm run test -w app",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w app",
     "build-index": "node scripts/build-index.mjs",
+    "extract-listing": "node scripts/extract-listing.mjs",
     "warm": "node scripts/warm.mjs"
   },
   "devDependencies": {

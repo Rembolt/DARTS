@@ -8,10 +8,12 @@ import { loadAllowedIds } from './ids.js';
 import { listen } from './listen.js';
 import { createMeshSource } from './mesh.js';
 import { createQuick } from './quick/index.js';
+import { createPiSource } from './quick/pi.js';
 import { apiRouter } from './routes.js';
 import { createSearch } from './search/index.js';
 import { DEMO_MODEL_ID } from './shared/contract.js';
 import { createSurroundings } from './surroundings/index.js';
+import { jevRouter, v2Router } from './v2/routes.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const env = loadEnv(resolve(repoRoot, '.env'));
@@ -33,6 +35,7 @@ try {
   const allowedIds = allowedIdsFromCatalogue();
   const mesh = createMeshSource({ cacheDir, env });
   const search = createSearch({ cacheDir });
+  const pi = createPiSource({ cacheDir, env });
   const surroundings = createSurroundings({ cacheDir, env });
   const quick = createQuick({
     cacheDir,
@@ -40,13 +43,18 @@ try {
     lookup: id => search.lookup(id),
     surroundings,
     bundleReady: () => existsSync(resolve(bundleDir, 'showcase.html')),
+    pi,
   });
   const agent = createAgent({ env, search, quick });
   const app = createApp(env, {
     bundleDir,
     mesh,
     allowedIds,
-    routers: [apiRouter({ search, quick, surroundings, agent, allowedIds })],
+    wideRouters: [jevRouter({ env })],
+    routers: [
+      apiRouter({ search, quick, surroundings, agent, allowedIds }),
+      v2Router({ pi, lookup: id => search.lookup(id), allowedIds, env, cacheDir }),
+    ],
     health: () => ({ index: search.ready() }),
   });
   await listen(app, port, SERVER_HOST);
