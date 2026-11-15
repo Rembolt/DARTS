@@ -43,6 +43,13 @@ export const SOURCES = {
   },
 };
 
+/** The blueprint view's look (mvp-design.md 7). The edge angle that picks its lines is `SIM.blueprintEdgeAngle`. */
+export const BLUEPRINT = {
+  background: '#ffffff',
+  opacity: 0.85,
+  lineColor: '#1f3a93',
+};
+
 export const AUDIO = {
   slotPannerDistance: 2,
   maxDelay: 0.2,
