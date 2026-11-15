@@ -125,7 +125,7 @@ function median(values: number[]): number {
 }
 
 /** Keeps only the blends some surface still names. */
-function pruneBlends(scene: SceneState): SceneState {
+export function pruneBlends(scene: SceneState): SceneState {
   const used = new Set<string>([
     ...Object.values(scene.surfaces),
     ...Object.values(scene.roomSurfaces).flatMap(r => Object.values(r)),
