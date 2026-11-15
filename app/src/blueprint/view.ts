@@ -40,6 +40,11 @@ export type Blueprint = {
   setEchoes(on: boolean): void;
   /** Doors and windows in the wall: an outline each, filled in when closed and hollow when open. */
   setOpenings(items: { id: string; kind: 'door' | 'window'; corners: readonly (readonly [number, number, number])[]; open: boolean }[]): void;
+  /**
+   * Cut holes where the scan filled a door or window (its glass, a closed leaf): triangles and edges inside are not
+   * drawn, so the drawing shows the same openings the sound goes through. `inside` null: draw everything.
+   */
+  setHoles(inside: ((p: ArrayLike<number>) => boolean) | null): void;
   setVisible(visible: boolean): void;
   resize(box: { width: number; height: number }, pixelRatio: number): void;
   dispose(): void;
@@ -136,25 +141,73 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
     r.render(scene, camera);
   });
 
+  let allLines: Float32Array | null = null;
+  let allMesh: { positions: Float32Array; indices: Uint32Array; materials: Uint8Array } | null = null;
+  let holes: ((p: ArrayLike<number>) => boolean) | null = null;
+  const mid: number[] = [0, 0, 0];
+
+  function drawLines(): void {
+    if (!allLines) return;
+    let data = allLines;
+    if (holes) {
+      const keep: number[] = [];
+      for (let i = 0; i < allLines.length; i += 6) {
+        for (let k = 0; k < 3; k++) mid[k] = (allLines[i + k] + allLines[i + 3 + k]) / 2;
+        if (!holes(mid)) for (let k = 0; k < 6; k++) keep.push(allLines[i + k]);
+      }
+      data = new Float32Array(keep);
+    }
+    const old = lines.geometry;
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(data, 3));
+    lines.geometry = geometry;
+    old.dispose();
+    scheduler.request();
+  }
+
+  function drawMesh(): void {
+    if (!allMesh) return;
+    const mesh = allMesh;
+    let indices = mesh.indices;
+    let materials = mesh.materials;
+    if (holes) {
+      const p = mesh.positions;
+      const keepIdx: number[] = [];
+      const keepMat: number[] = [];
+      for (let t = 0; t < materials.length; t++) {
+        const a = mesh.indices[3 * t] * 3, b = mesh.indices[3 * t + 1] * 3, c = mesh.indices[3 * t + 2] * 3;
+        for (let k = 0; k < 3; k++) mid[k] = (p[a + k] + p[b + k] + p[c + k]) / 3;
+        if (holes(mid)) continue;
+        keepIdx.push(mesh.indices[3 * t], mesh.indices[3 * t + 1], mesh.indices[3 * t + 2]);
+        keepMat.push(materials[t]);
+      }
+      indices = new Uint32Array(keepIdx);
+      materials = new Uint8Array(keepMat);
+    }
+    const old = solid.geometry;
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(mesh.positions, 3));
+    const grouped = groupByMaterial(indices, materials);
+    geometry.setIndex(new BufferAttribute(grouped.indices, 1));
+    for (const g of grouped.groups) geometry.addGroup(g.start, g.count, g.materialIndex);
+    solid.geometry = geometry;
+    old.dispose();
+    scheduler.request();
+  }
+
   return {
     setLines(data) {
-      const old = lines.geometry;
-      const geometry = new BufferGeometry();
-      geometry.setAttribute('position', new BufferAttribute(data, 3));
-      lines.geometry = geometry;
-      old.dispose();
-      scheduler.request();
+      allLines = data;
+      drawLines();
+    },
+    setHoles(inside) {
+      holes = inside;
+      drawLines();
+      drawMesh();
     },
     setMesh(mesh) {
-      const old = solid.geometry;
-      const geometry = new BufferGeometry();
-      geometry.setAttribute('position', new BufferAttribute(mesh.positions, 3));
-      const grouped = groupByMaterial(mesh.indices, mesh.materials);
-      geometry.setIndex(new BufferAttribute(grouped.indices, 1));
-      for (const g of grouped.groups) geometry.addGroup(g.start, g.count, g.materialIndex);
-      solid.geometry = geometry;
-      old.dispose();
-      scheduler.request();
+      allMesh = mesh;
+      drawMesh();
     },
     setHeat(heat) {
       const old = heatMesh.geometry;

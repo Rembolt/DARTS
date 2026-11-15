@@ -12,6 +12,8 @@ export type Surroundings = { get(row: IndexRow): Promise<AreaSummary> };
 
 const DETECT_URL = 'https://api.vexcelgroup.com/v2/elements/detect';
 const TIMEOUT_MS = 15_000;
+/** How long an answer with no detections is believed before asking again. */
+const NOTHING_FOUND_MS = 30 * 60 * 1000;
 /** Waits before each retry after a 429: three retries, then the fallback. */
 const BACKOFF_MS = [1000, 2000, 4000];
 /** Located sources are kept within this distance. */
@@ -79,6 +81,8 @@ export function createSurroundingsWith(options: {
     log = (message: string) => console.warn(message),
   } = options;
   const inFlight = new Map<string, Promise<AreaSummary>>();
+  /** Properties Vexcel answered with no detections, and when. In memory only: a restart asks again. */
+  const nothingFound = new Map<string, number>();
 
   const cachePath = (modelId: string) => join(cacheDir, `surroundings-${modelId}.json`);
 
@@ -141,6 +145,8 @@ export function createSurroundingsWith(options: {
     const features = (got.answer as { features?: unknown } | null)?.features;
     if (!Array.isArray(features) || features.length === 0) {
       log(`surroundings: Vexcel found nothing around ${row.modelId}; using the property type`);
+      // A real answer, not an outage: asking again on every card and tour load would cost 2 s each time.
+      nothingFound.set(row.modelId, Date.now());
       return fallbackArea(row);
     }
     const reading = readDetections(got.answer, row.lat, row.lon);
@@ -157,6 +163,8 @@ export function createSurroundingsWith(options: {
         }
         const cached = readCache(row.modelId);
         if (cached !== null) return summarise(cached, row);
+        const empty = nothingFound.get(row.modelId);
+        if (empty !== undefined && Date.now() - empty < NOTHING_FOUND_MS) return fallbackArea(row);
         let pending = inFlight.get(row.modelId);
         if (pending === undefined) {
           pending = fetchArea(row).finally(() => inFlight.delete(row.modelId));

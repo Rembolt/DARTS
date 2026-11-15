@@ -36,6 +36,24 @@ describe('readRequest', () => {
     expect(readRequest('a flat place').otherCity).toBe(false);
   });
 
+  it('does not read a month or a weekday as another city', () => {
+    expect(readRequest('a home in Houston to move into in March')).toMatchObject({ city: 'Houston', otherCity: false });
+    expect(readRequest('a quiet house I can see in January').otherCity).toBe(false);
+    expect(readRequest('a studio in LA, free in Monday').otherCity).toBe(false);
+    expect(readRequest('a house in Spring')).toMatchObject({ city: 'Houston', otherCity: false });
+    expect(readRequest('a lab in Boston in March').otherCity).toBe(true);
+  });
+
+  it('does not read a price or a size as a zip', () => {
+    expect(readRequest('a home in Houston under 50000').zip).toBeNull();
+    expect(readRequest('a home in Houston for $90000').zip).toBeNull();
+    expect(readRequest('an office with 20000 sqft').zip).toBeNull();
+    expect(readRequest('an office with 20000 square feet').zip).toBeNull();
+    expect(readRequest('a shop, 15000 sq ft').zip).toBeNull();
+    expect(readRequest('a home under 450000 in 77008').zip).toBe('77008');
+    expect(readRequest('homes in 90026 under 80000').zip).toBe('90026');
+  });
+
   it('reads the kind', () => {
     expect(readRequest('an office for my team').kind).toBe('commercial');
     expect(readRequest('a retail store').kind).toBe('commercial');

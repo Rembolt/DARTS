@@ -11,9 +11,9 @@ describe('permissions', () => {
   });
 
   it('hides what is off by default', () => {
-    expect(allowedActions(P)).not.toContain('move_user_to');
+    expect(allowedActions(P)).toContain('move_user_to');
     expect(allowedActions(P)).not.toContain('set_mesh_layer');
-    expect(refusal(P, 'move_user_to', {})).toBe('User location');
+    expect(refusal({ ...P, put: { ...P.put, userLocation: false } }, 'move_user_to', {})).toBe('User location');
   });
 
   it('lists set_mesh_layer once any layer is on', () => {
@@ -67,7 +67,7 @@ describe('permissions', () => {
     const p: Permissions = {
       ...P,
       get: { ...P.get, doors: false, mesh: false },
-      put: { ...P.put, speakers: false },
+      put: { ...P.put, speakers: false, userLocation: false },
       putMaterial: { ...P.putMaterial, tile: false },
       putLayer: { type002: false, type003: true },
     };
@@ -75,6 +75,6 @@ describe('permissions', () => {
       get: ['Doors', 'Mesh'],
       put: ['Speakers', 'User location', 'Material: tile', 'Mesh layer: type002'],
     });
-    expect(offRows(P)).toEqual({ get: [], put: ['User location'] });
+    expect(offRows(P)).toEqual({ get: [], put: [] });
   });
 });

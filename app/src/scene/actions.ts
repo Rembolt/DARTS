@@ -26,7 +26,8 @@ export type SceneEffects = {
   sourcesChanged(scene: SceneState): Promise<void>; // engine.setSources + source positions for traces
   clearReverb(): void;
   retrace(): void;
-  moveUserTo(roomId: string): Promise<void>;
+  /** Resolves to where the user really landed when that is known: a small room may have no viewpoint of its own. */
+  moveUserTo(roomId: string): Promise<{ arrivedIn: string; exact: boolean } | void>;
   measure(at: { point?: Vec3; roomId?: string }): Promise<Measurement>;
   current(): Measurement | null; // the latest trace and cached reverb; no new work
   rooms(): RoomInfo[]; openings(): OpeningInfo[]; layers(): { id: string; triangles: number }[];
@@ -187,10 +188,9 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
         const o = openings.find(x => x.id === a.id);
         if (!o) return fail(`Unknown opening: ${a.id}.`);
         if (o.kind !== 'window' && o.kind !== 'door') return fail(`Opening ${a.id} is a gap with no door or window to close.`);
-        if (o.meshClosed) return fail(`Opening ${a.id} is already closed in the scan, so it can't be changed.`);
         targets = [o];
       } else {
-        targets = openings.filter(o => (!room || o.roomId === room.id) && !o.meshClosed && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
+        targets = openings.filter(o => (!room || o.roomId === room.id) && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
         if (targets.length === 0) {
           const what = type === 'window' ? 'windows' : type === 'door' ? 'doors' : 'windows or doors';
           return fail(room ? `No ${what} to change in ${room.name}.` : `No ${what} to change.`);
@@ -259,12 +259,14 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
       const before = effects.current();
       const room = findRoom(a.room);
       if (!room) return fail(`Unknown room: ${a.room}.`);
+      let landed: { arrivedIn: string; exact: boolean } | void;
       try {
-        await effects.moveUserTo(room.id);
+        landed = await effects.moveUserTo(room.id);
       } catch (e) {
         return fail(`I couldn't move you to ${room.name}: ${message(e)}`);
       }
-      return finish({ room: room.id }, before);
+      // Tell the truth about where the user is: the closest viewpoint can sit in the next room.
+      return finish(landed && !landed.exact ? { room: room.id, arrivedIn: landed.arrivedIn, note: `${room.name} has no viewpoint of its own; the user is now in ${landed.arrivedIn}, as close as the tour allows. Say so.` } : { room: room.id }, before);
     },
 
     async setMeshLayer(a) {

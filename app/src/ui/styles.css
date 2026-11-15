@@ -342,6 +342,7 @@ button.process-line:hover { color: var(--ink-2); }
 .start { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(38 29 20 / 0.62); backdrop-filter: blur(6px); pointer-events: auto; z-index: 20; animation: fade var(--enter) var(--ease); }
 .start-card { width: min(420px, calc(100% - 32px)); display: grid; justify-items: start; gap: 14px; padding: 28px; border-radius: 16px; background: var(--surface-solid); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--ink); }
 .start-card svg { color: var(--sound); }
+.start-mark { display: block; width: 36px; height: 36px; }
 .start-card h1 { margin: 0; font: 600 26px/1.15 var(--font); letter-spacing: -0.02em; }
 .start-card p { margin: 0; font: var(--t-body); color: var(--ink-2); }
 .btn.big { height: 42px; padding: 0 18px; font-size: 14px; margin-top: 6px; }
@@ -395,6 +396,7 @@ button.process-line:hover { color: var(--ink-2); }
 .compare span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .confirm-actions { display: flex; gap: 8px; margin-top: 8px; }
 .back-link { text-decoration: none; color: var(--ink-2); }
+.back-mark { display: block; width: 16px; height: 16px; flex: none; }
 
 .msg-line { display: block; }
 .msg-line + .msg-line, .msg-line + .msg-list, .msg-list + .msg-line { margin-top: 6px; }
@@ -454,3 +456,11 @@ button.process-line:hover { color: var(--ink-2); }
   .inspector { width: min(268px, calc(100vw - 24px)); }
   .tut-card { max-width: calc(100vw - 24px); }
 }
+
+/* Voice conversation: the talk button pulses while you speak, and a ring shows it is listening. */
+.mic.talk.on, .fd-talk.on { background: var(--sound); color: var(--sound-ink); }
+.fd-talk.hearing, .mic.talk.hearing { box-shadow: 0 0 0 3px color-mix(in srgb, var(--sound) 35%, transparent); }
+
+.tut-count { display: flex; align-items: center; justify-content: space-between; }
+.tut-voice { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer; }
+.tut-voice:hover { background: var(--raised); color: var(--ink); }

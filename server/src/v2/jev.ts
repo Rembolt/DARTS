@@ -6,6 +6,8 @@ import { JEV_PROMPT } from './jev-prompt.js';
 const MODEL = 'claude-haiku-5-5';
 const MAX_MESSAGES = 60;
 const MAX_TOOLS = 12;
+/** The SDK's own default is 10 minutes: the chat would sit on "Thinking" that long. */
+const CALL_TIMEOUT_MS = 60_000;
 
 export const JEV_TOOL_NAMES = new Set([
   'measure',
@@ -26,7 +28,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 
 type MessagesClient = {
   messages: {
-    create(params: Record<string, unknown>): Promise<unknown>;
+    create(params: Record<string, unknown>, options?: { timeout: number; maxRetries: number }): Promise<unknown>;
   };
 };
 
@@ -66,7 +68,7 @@ export async function relayJev(
       system: [{ type: 'text', text: JEV_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: valid.messages,
       tools: valid.tools,
-    });
+    }, { timeout: CALL_TIMEOUT_MS, maxRetries: 1 });
   } catch {
     throw new NotPossibleError(notPossible('agent_failed'));
   }

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="DARTS">
+  <title>DARTS</title>
+  <!--
+    Construction (512 canvas, 8 px grid):
+    D   = 288 square centred on the canvas (112..400): stem 40 wide, bowl a half circle r144 about (256,256), wall 40.
+    Ray = one exact reflection off the inner wall at (360,256). The wall's normal there is horizontal,
+          so the legs mirror each other (slope 3/8). Ray weight is half the wall: 20.
+          The mitred apex is clipped to the room, so it meets the curved wall flush.
+    Dot = the listener, diameter 40 (the wall weight), at the end of the ray.
+  -->
+  <defs>
+    <clipPath id="room">
+      <path d="M152 152 H256 A104 104 0 0 1 256 360 H152 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#f6f1e7"/>
+
+  <path fill="#261d14" fill-rule="evenodd"
+        d="M112 112 H256 A144 144 0 0 1 256 400 H112 Z
+           M152 152 V360 H256 A104 104 0 0 0 256 152 Z"/>
+
+  <g clip-path="url(#room)">
+    <path d="M192 319 L360 256 L192 193" fill="none" stroke="#d9462a" stroke-width="20" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="8"/>
+  </g>
+
+  <circle cx="192" cy="193" r="20" fill="#d9462a"/>
+</svg>

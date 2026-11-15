@@ -1,23 +1,25 @@
 // The first-visit walkthrough: the page goes dark except the one control being explained, with a short card beside it.
 // Skippable at any step (Esc too), remembered once seen, and the help button in the dock plays it again.
 import { signal } from '@preact/signals';
-import { ArrowLeft, CircleHelp, Compass, Crosshair, DoorOpen, Layers, Map as MapIcon, Plus, SlidersHorizontal, Volume2 } from 'lucide-preact';
+import { ArrowLeft, CircleHelp, Compass, Crosshair, DoorOpen, Layers, Map as MapIcon, Plus, SlidersHorizontal, Volume2, VolumeX } from 'lucide-preact';
 import type { ComponentType } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { setVoiceMuted, speak, stopSpeaking, voiceMuted } from '../voice/speak';
 import { onKeyDown } from './keys';
 import { ui } from './store';
 
 const KEY = 'acoustic:tutorial';
 
 type Tool = { icon: ComponentType<{ size?: number; strokeWidth?: number }>; name: string; what: string };
-type Step = { targets: string[]; title: string; text?: string; tools?: Tool[] };
+/** `say` is what Jev speaks on this step; it carries the same news as the card, written to be heard. */
+type Step = { targets: string[]; title: string; text?: string; tools?: Tool[]; say: string };
 
 const STEPS: Step[] = [
-  { targets: [], title: 'Hear this home before you visit', text: 'A quick look at the controls, about 30 seconds. You can skip it any time, and the help button in the toolbar brings it back.' },
-  { targets: ['.chat'], title: 'Ask or tell it what to change', text: 'Ask about the sound ("how echoey is the kitchen?") or tell it what to try ("close all the doors"). It asks before changing anything.' },
+  { targets: [], title: 'Hear this home before you visit', say: 'Hi, I\'m Maya, your sound guide. In the next thirty seconds I\'ll show you how to listen to this home before you visit. You can skip any time.', text: 'A quick look at the controls, about 30 seconds. You can skip it any time, and the help button in the toolbar brings it back.' },
+  { targets: ['.chat'], title: 'Ask or tell it what to change', say: 'This is where you talk to me. Ask how echoey the kitchen is, or tell me to close all the doors. I always ask before I change anything.', text: 'Ask about the sound ("how echoey is the kitchen?") or tell it what to try ("close all the doors"). It asks before changing anything.' },
   {
     targets: ['[data-tour="blueprint"]', '[data-tour="noise"]', '[data-tour="room"]', '[data-tour="compass"]'],
-    title: 'Change what you see',
+    title: 'Change what you see', say: 'These four buttons change what you see. Blueprint shows the walls and the sound paths. Noise maps street noise on this floor. Room shows the echo of the room you\'re in. And Sound shows where each sound is coming from.',
     tools: [
       { icon: Layers, name: 'Blueprint', what: 'walls and sound paths' },
       { icon: MapIcon, name: 'Noise', what: 'street noise on this floor' },
@@ -27,7 +29,7 @@ const STEPS: Step[] = [
   },
   {
     targets: ['[data-tour="speaker"]', '[data-tour="probe"]'],
-    title: 'Try things',
+    title: 'Try things', say: 'Want to try something? Add a speaker to play music or voices anywhere in the house. Or drop a probe to read the sound level at one spot.',
     tools: [
       { icon: Plus, name: 'Speaker', what: 'place music or voices' },
       { icon: Crosshair, name: 'Probe', what: 'read the level at a spot' },
@@ -35,16 +37,16 @@ const STEPS: Step[] = [
   },
   {
     targets: ['[data-tour="settings"]', '[data-tour="sound"]'],
-    title: 'Materials and sound',
+    title: 'Materials and sound', say: 'Settings lets you swap carpet for tile or add furniture, and you\'ll hear the change right away. Start sound turns the audio on or off.',
     tools: [
       { icon: SlidersHorizontal, name: 'Settings', what: 'carpet, tile, furniture' },
       { icon: Volume2, name: 'Start sound', what: 'turn the audio on or off' },
     ],
   },
-  { targets: ['.pin.opening'], title: 'Open and close doors and windows', text: 'Click a door or window on the tour to flip it and hear the difference at once.' },
+  { targets: ['.pin.opening'], title: 'Open and close doors and windows', say: 'Click any door or window in the tour to open or close it, and hear the difference immediately.', text: 'Click a door or window on the tour to flip it and hear the difference at once.' },
   {
     targets: ['[data-tour="back"]', '[data-tour="help"]'],
-    title: 'That is it',
+    title: 'That is it', say: 'That\'s it. Every number you see is an estimate, not a measurement. Back returns to the search, and Help plays this tour again.',
     text: 'Every number you see is an estimate, not a measurement.',
     tools: [
       { icon: ArrowLeft, name: 'Back', what: 'return to the search' },
@@ -141,6 +143,13 @@ export function Tutorial() {
     }
   }, [ui.started.value]);
 
+  // Narrate the step; any move to another step, or closing, cuts the line.
+  useEffect(() => {
+    if (step === null) return;
+    void speak(STEPS[step].say, 'jev');
+    return () => stopSpeaking();
+  }, [step, voiceMuted.value]); // turning the voice on again mid-step reads the step
+
   useEffect(
     () =>
       onKeyDown(e => {
@@ -235,6 +244,9 @@ export function Tutorial() {
           <>
         <p class="tut-count">
           Step {step + 1} of {STEPS.length}
+          <button type="button" class="tut-voice" aria-pressed={!voiceMuted.value} aria-label={voiceMuted.value ? 'Turn the narration on' : 'Turn the narration off'} title={voiceMuted.value ? 'Narration is off: click to hear it' : 'Mute the narration'} onClick={() => setVoiceMuted(!voiceMuted.value)}>
+            {voiceMuted.value ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
         </p>
         <h3>{s.title}</h3>
         {s.text && <p class="tut-text">{s.text}</p>}

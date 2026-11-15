@@ -128,13 +128,13 @@ describe('agent loop', () => {
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('stops at six model calls', async () => {
+  it('stops at eight model calls', async () => {
     let n = 0;
     const endless: Step = () => message('tool_use', [toolUse(`t${n++}`, 'search_properties', SEARCH_INPUT)]);
     const { client, calls } = scripted([], endless);
     const { events, emit } = collect();
     await createAgent({ env: ENV, ...fakes(), client }).run({ text: 'hi' }, emit, live());
-    expect(calls).toHaveLength(6);
+    expect(calls).toHaveLength(8);
     expect(events.at(-2)).toMatchObject({ type: 'notPossible', reason: { code: 'agent_failed' } });
     expect(events.at(-1)).toEqual({ type: 'done' });
   });
@@ -319,14 +319,33 @@ describe('agent loop', () => {
 });
 
 describe('conversations', () => {
-  it('is busy past the limit and expires idle ones', () => {
+  it('drops the least recently used idle one past the limit, and expires idle ones', () => {
     let t = 0;
     const c = createConversations({ max: 2, idleMs: 1000, now: () => t });
     const a = c.open(undefined);
-    c.open(undefined);
-    expect(c.open(undefined)).toMatchObject({ code: 'busy' });
-    expect(c.open('code' in a ? undefined : a.id)).toMatchObject({ fresh: false });
+    t = 1;
+    const b = c.open(undefined);
+    if ('code' in a || 'code' in b) throw new Error('expected two conversations');
+    t = 2;
+    expect(c.open(a.id)).toMatchObject({ fresh: false }); // a is now the newer one
+    t = 3;
+    expect(c.open(undefined)).toMatchObject({ fresh: true }); // b made room
+    expect(c.open(a.id)).toMatchObject({ fresh: false });
+    expect(c.open(b.id)).toMatchObject({ fresh: true }); // b is gone: its id starts over
     t = 5000;
     expect(c.open(undefined)).toMatchObject({ fresh: true });
+  });
+
+  it('is busy only when every conversation is running', () => {
+    const c = createConversations({ max: 2 });
+    const a = c.open(undefined);
+    const b = c.open(undefined);
+    if ('code' in a || 'code' in b) throw new Error('expected two conversations');
+    c.setRunning(a.id, new AbortController());
+    c.setRunning(b.id, new AbortController());
+    expect(c.open(undefined)).toMatchObject({ code: 'busy' });
+    c.cancelRunning(a.id);
+    expect(c.open(undefined)).toMatchObject({ fresh: true });
+    expect(c.open(b.id)).toMatchObject({ fresh: false });
   });
 });

@@ -4,10 +4,12 @@ import { CITY_VIEWS, DEMO_MODEL_ID, NOT_POSSIBLE, type AgentEvent, type City, ty
 import { getJson, type NotPossibleError } from '../api';
 import { tourUrl } from '../route';
 import { rankCards, renderCard } from './card';
-import { ArrowUp, Check, ChevronLeft, ChevronRight, Headphones, Loader2, MapPin, Mic, MicOff, Square, icon } from './icons';
+import { ArrowUp, Check, ChevronLeft, ChevronRight, Loader2, MapPin, Mic, MicOff, Square, AudioLines, Volume2, VolumeX, icon } from './icons';
 import { createCityMap, type Pin } from './map';
 import { askAgent } from './stream';
 import { createRecorder } from '../voice/whisper';
+import { startConversation, type Conversation } from '../voice/converse';
+import { ackAfter, briefly, setVoiceMuted, speak, stopSpeaking, voiceMuted, warmAcks } from '../voice/speak';
 import { EMPTY, load, reduce, save, type FrontAction, type FrontState } from './state';
 import './front.css';
 
@@ -61,9 +63,14 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   root.classList.add('fd');
 
   // The name of the page sits in a corner: the first view is just the one line to type into.
-  const heading = el('h1', undefined, 'Hear a place before you visit it');
+  // The logo and one line that says what this is for.
+  const heading = el('h1', undefined, 'Hear a Home Before You Rent or Buy It');
   const brand = el('div', 'fd-brand');
-  brand.append(icon(Headphones, 16), heading);
+  const mark = document.createElement('img');
+  mark.className = 'fd-mark';
+  mark.src = '/darts-mark.svg';
+  mark.alt = 'DARTS';
+  brand.append(mark, heading);
 
   const map = createCityMap({
     onCity: city => apply({ type: 'city', city }),
@@ -139,8 +146,19 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
     micOff.hidden = !on;
     box.placeholder = on ? 'Listening… click the mic when you are done' : idlePlaceholder;
   }
+  let micMuted = false;
   mic.addEventListener('click', () => {
+    if (conversation) {
+      // In a voice conversation the mic button mutes the mic instead of starting a second recording.
+      micMuted = !micMuted;
+      conversation.setMuted(micMuted);
+      mic.classList.toggle('on', micMuted);
+      micOn.hidden = micMuted;
+      micOff.hidden = !micMuted;
+      return;
+    }
     if (!listening) {
+      stopSpeaking(); // do not hear the agent while you talk
       recorder.warm();
       setListening(true);
       recorder.start(t => (box.value = t)).catch(() => {
@@ -168,7 +186,74 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
         mic.disabled = false;
       });
   });
-  form.append(label, meter, cityPill, box, mic, button);
+  // Voice on or off. Remembered, and shared with the tour.
+  const voiceBtn = el('button', 'mic fd-voice');
+  voiceBtn.type = 'button';
+  const voiceOn = icon(Volume2, 16);
+  const voiceOff = icon(VolumeX, 16);
+  voiceBtn.append(voiceOn, voiceOff);
+  const syncVoice = () => {
+    voiceOn.hidden = voiceMuted.value;
+    voiceOff.hidden = !voiceMuted.value;
+    voiceBtn.setAttribute('aria-pressed', String(!voiceMuted.value));
+    voiceBtn.setAttribute('aria-label', voiceMuted.value ? 'Turn the assistant voice on' : 'Turn the assistant voice off');
+    voiceBtn.title = voiceMuted.value ? 'Voice is off: click to let the assistant speak' : 'Voice is on: click to keep the assistant silent';
+  };
+  syncVoice();
+  voiceBtn.addEventListener('click', () => {
+    setVoiceMuted(!voiceMuted.value);
+    syncVoice();
+  });
+  // Hands-free: talk, the agent answers aloud, talk again. Speaking over it cuts it off.
+  const talkBtn = el('button', 'mic fd-talk');
+  talkBtn.type = 'button';
+  talkBtn.title = 'Talk with the assistant, hands free (headphones recommended)';
+  talkBtn.setAttribute('aria-label', 'Start a voice conversation');
+  talkBtn.setAttribute('aria-pressed', 'false');
+  talkBtn.append(icon(AudioLines, 16));
+  let conversation: Conversation | null = null;
+  function endConversation(): void {
+    stop(); // ending the conversation also ends the speech and the request in progress
+    conversation?.stop();
+    conversation = null;
+    talkBtn.classList.remove('on');
+    micMuted = false;
+    mic.classList.remove('on');
+    micOn.hidden = false;
+    micOff.hidden = true;
+    talkBtn.setAttribute('aria-pressed', 'false');
+    talkBtn.setAttribute('aria-label', 'Start a voice conversation');
+    box.placeholder = idlePlaceholder;
+  }
+  talkBtn.addEventListener('click', () => {
+    if (conversation || talkBtn.classList.contains('on')) return endConversation();
+    stopSpeaking();
+    warmAcks('front');
+    talkBtn.classList.add('on');
+    talkBtn.setAttribute('aria-pressed', 'true');
+    talkBtn.setAttribute('aria-label', 'End the voice conversation');
+    box.placeholder = 'Just talk. I am listening…';
+    startConversation({
+      onText: text => {
+        box.value = text;
+        ask();
+      },
+      onUserSpeaking: on => talkBtn.classList.toggle('hearing', on),
+      onTranscribing: () => {},
+      agentBusy: () => state.running || talkBtn.classList.contains('speaking'),
+      onBargeIn: () => stop(),
+    }).then(
+      c => {
+        if (talkBtn.classList.contains('on')) conversation = c;
+        else c.stop();
+      },
+      () => {
+        endConversation();
+        box.placeholder = 'Microphone blocked. Allow it in the browser, or type.';
+      },
+    );
+  });
+  form.append(label, meter, cityPill, box, voiceBtn, talkBtn, mic, button);
 
   // The conversation: what you asked, the steps, the reply, then the places. Same bubbles as the tour's chat.
   const userMsg = el('p', 'msg user');
@@ -386,6 +471,7 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   }
 
   function stop(): void {
+    stopSpeaking();
     runToken++;
     controller?.abort();
     controller = null;
@@ -408,9 +494,12 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
     controller = current;
     const conversationId = state.conversationId;
     apply({ type: 'ask', text });
+    const cancelFiller = talkBtn.classList.contains('on') ? ackAfter('front', text, 150, on => talkBtn.classList.toggle('speaking', on)) : () => {};
     const onEvent = (event: AgentEvent) => {
+      if (event.type === 'text' || event.type === 'done' || event.type === 'notPossible') cancelFiller();
       if (token !== runToken) return; // a late event from a run that was stopped or replaced
       apply(event);
+      if (event.type === 'text') void speak(briefly(event.text), 'front', on => talkBtn.classList.toggle('speaking', on));
       if (event.type === 'done') {
         controller = null;
         save(state, storage);

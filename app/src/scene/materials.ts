@@ -19,6 +19,9 @@ export type SetMaterials = {
   roomSurfaces?: { roomId: string; surfaces: [number, number, number] }[];
   furnishing: number;
   roomFurnishing?: { roomId: string; value: number }[];
+  /** Indexes of `glass` and `door` in `library`, for closed window and door panels. */
+  glassIndex?: number;
+  doorIndex?: number;
 };
 
 const MIN_PART = 0.1;
@@ -97,6 +100,9 @@ export function setMaterialsMessage(scene: SceneState, roomsTagged: boolean): Se
     library: materials,
     surfaces: SURFACE_CLASSES.map(cls => index(scene.surfaces[cls], cls)) as SetMaterials['surfaces'],
     furnishing: scene.furnishing,
+    // Closed window and door panels (worker: openings.ts). Without these they would block like the wall material.
+    glassIndex: names.indexOf('glass'),
+    doorIndex: names.indexOf('door'),
   };
   if (roomsTagged) {
     msg.roomSurfaces = Object.entries(scene.roomSurfaces).map(([roomId, r]) => ({

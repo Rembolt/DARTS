@@ -29,17 +29,22 @@ const OUR_CITY = /\b(houston|los angeles|la)\b/i;
 // Neighbourhoods and suburbs people name instead of the city. A place that starts with one is ours, not another city.
 const HOUSTON_AREAS = /^(montrose|(the )?heights|river oaks|midtown|galleria|uptown|memorial|west university|bellaire|rice village|museum district|east end|katy|sugar land|spring|(the )?woodlands|pearland|cypress|tomball|kingwood|clear lake|spring branch|garden oaks|oak forest)\b/i;
 const LA_AREAS = /^(hollywood|west hollywood|venice|santa monica|silver lake|echo park|koreatown|beverly hills|westwood|pasadena|burbank|glendale|culver city|encino|sherman oaks|studio city|brentwood|highland park|los feliz|downtown|dtla|van nuys|north hollywood|long beach|inglewood|torrance)\b/i;
+// "in March", "in Monday's…": a time, not a place.
+const TIME_WORD = /^(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec|monday|tuesday|wednesday|thursday|friday|saturday|sunday|spring|summer|fall|autumn|winter|q[1-4])\b/i;
+// Five digits that are a zip: not a price ("$50000", "under 50000") and not a size ("20000 sqft").
+const ZIP = /(?<![$\d.,])(?<!\b(?:under|over|below|above|than)\s)\b(\d{5})\b(?![.,]?\d)(?!\s*(?:k\b|sq\.?\s?ft|sqft|square|dollars?|usd|bucks))/i;
 const IN_PLACE =/\bin\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*)*)/g;
 
 export function readRequest(text: string): { profile: ProfileId; city: City | null; otherCity: boolean; zip: string | null; kind: PropertyKind | 'any' } {
   const profile = PROFILE_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'general';
-  const places = [...text.matchAll(IN_PLACE)].map(m => m[1]);
+  // "Spring" is also a Houston suburb, so a known neighbourhood is kept before the time words are dropped.
+  const places = [...text.matchAll(IN_PLACE)].map(m => m[1]).filter(p => HOUSTON_AREAS.test(p) || LA_AREAS.test(p) || !TIME_WORD.test(p));
   const named: City | null = LOS_ANGELES.test(text) ? 'Los Angeles' : HOUSTON.test(text) ? 'Houston' : null;
   // "in Montrose" with no city named: the neighbourhood tells which city. A bare "Downtown" stays on the Houston default.
   const city: City | null = named ?? (places.some(p => LA_AREAS.test(p) && !/^downtown\b/i.test(p)) ? 'Los Angeles'
     : places.some(p => HOUSTON_AREAS.test(p)) ? 'Houston' : null);
   const otherCity = places.some(p => !OUR_CITY.test(p) && !HOUSTON_AREAS.test(p) && !LA_AREAS.test(p));
-  const zip = /\b(\d{5})\b/.exec(text)?.[1] ?? null;
+  const zip = ZIP.exec(text)?.[1] ?? null;
   const kind: PropertyKind = /\bapartment/i.test(text) ? 'apartment'
     : COMMERCIAL.test(text) && !HOME_OFFICE.test(text) ? 'commercial' : 'home';
   return { profile, city, otherCity, zip, kind };

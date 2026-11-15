@@ -51,6 +51,8 @@ export type AudioEngine = {
    * does not model yet, such as traffic by time of day or windows closed. Estimates; 0 / 0 is neutral.
    */
   setSourceTrim(id: string, gainDb: number, highDb: number): void;
+  /** Turn the whole mix down (or back up) so a voice can be heard over it. */
+  setDuck(on: boolean): void;
   /** Stop the sounds and close the context. */
   stop(): Promise<void>;
 };
@@ -456,6 +458,10 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
       for (const v of voices.values()) if (!v.stereo) v.send.connect(input);
     },
 
+    setDuck(on) {
+      // A quarter of the level while someone is talking: the voice stays clear without stopping the tour's sound.
+      volume.gain.setTargetAtTime(on ? AUDIO.masterVolume * 0.25 : AUDIO.masterVolume, now(), 0.12);
+    },
     async stop() {
       if (stopped) return;
       stopped = true;

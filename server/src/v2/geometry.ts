@@ -91,14 +91,37 @@ function mapOpening(
   };
 }
 
+/**
+ * The name a person would use: the owner's label, else the detected type with the best confidence ("Kitchen"),
+ * else "Room". Repeated names are numbered ("Bedroom 1", "Bedroom 2") so the agent can tell them apart.
+ */
+export function roomNames(rooms: PiModel['rooms']): Map<string, string> {
+  const base = rooms.map(r => {
+    const best = [...r.classifications].sort((x, y) => y.confidence - x.confidence)[0];
+    return r.label.trim() || best?.label || 'Room';
+  });
+  const total = new Map<string, number>();
+  for (const b of base) total.set(b, (total.get(b) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const out = new Map<string, string>();
+  rooms.forEach((r, i) => {
+    const b = base[i];
+    const n = (seen.get(b) ?? 0) + 1;
+    seen.set(b, n);
+    out.set(r.id, (total.get(b) ?? 0) > 1 ? `${b} ${n}` : b);
+  });
+  return out;
+}
+
 /** Extract closed room polygons and 2D opening spans in the PI frame from a PI model. */
 export function geometryOf(model: PiModel): GeometryAnswer {
   const rooms: PiRoomGeom[] = [];
   const openings: PiOpening[] = [];
 
-  for (const room of model.rooms) {
-    if (room.edges.length < 3) continue;
-    const name = room.label || 'Room';
+  const usable = model.rooms.filter(r => r.edges.length >= 3);
+  const names = roomNames(usable);
+  for (const room of usable) {
+    const name = names.get(room.id) ?? 'Room';
     const floorZ = room.lowerElevation ?? 0;
     const height = room.height > 0 ? room.height : DEFAULT_ROOM_HEIGHT;
     const polygon = room.edges.map(e => e.a);

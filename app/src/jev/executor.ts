@@ -70,6 +70,14 @@ function roundValue(v: unknown): unknown {
   return out;
 }
 
+const isBands = (v: unknown): v is Bands => Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number' && Number.isFinite(n));
+
+/** A measurement the model hands back for `compare`: it retypes the numbers, so the shape is checked before any arithmetic. */
+function isMeasurement(v: unknown): v is Measurement {
+  return isPlainObject(v) && isBands(v.echoTime) && Array.isArray(v.sources)
+    && v.sources.every(s => isPlainObject(s) && typeof s.id === 'string' && isBands(s.levelDb));
+}
+
 const VALID_TARGETS: Record<string, SurfaceClass> = {
   wall: 'wall',
   floor: 'floor',
@@ -121,8 +129,8 @@ export async function execute(
   const checkPerm = (action: ActionName, args: { material?: string; layer?: string; openingKind?: OpeningKind | 'all' }) => {
     const row = refusal(perms, action, args);
     if (!row) return null;
-    const mode = action === 'measure' || action === 'compare' ? 'GET' : 'PUT';
-    return `Not allowed: turn on ${mode} for ${row} in Settings.`;
+    // No mention of where the switch is: the assistant must not send the user to a settings screen.
+    return `Not allowed here: the assistant has no permission for ${row}.`;
   };
 
   try {
@@ -135,8 +143,8 @@ export async function execute(
       case 'compare': {
         const denied = checkPerm('compare', {});
         if (denied) return errResult(call.id, denied);
-        if (!isPlainObject(input.before) || !isPlainObject(input.after)) {
-          return errResult(call.id, 'Give before and after measurements.');
+        if (!isMeasurement(input.before) || !isMeasurement(input.after)) {
+          return errResult(call.id, 'Give before and after exactly as a measure result returned them: { roomId, echoTime: [3 numbers], sources: [{ id, levelDb: [3 numbers], walls }], estimated }.');
         }
         return okResult(
           call.id,
@@ -242,6 +250,8 @@ export async function execute(
         return errResult(call.id, `Unknown tool: ${call.name}`);
     }
   } catch (err) {
-    return errResult(call.id, err instanceof Error ? err.message : String(err));
+    // The details are for the console. The assistant gets a plain line so it cannot read a stack or a code out loud.
+    console.error('[jev] tool failed:', call.name, err);
+    return errResult(call.id, 'That did not work. Tell the user in one short sentence that you could not do it, and nothing else.');
   }
 }

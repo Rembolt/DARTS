@@ -36,8 +36,22 @@ export function loadAutosave(modelId: string, storage?: Storage): SceneState | n
   }
   if (text === null) return null;
   const r = parseSceneFile(text, modelId);
-  return 'scene' in r ? r.scene : null;
+  if (!('scene' in r)) return null;
+  // One-time: scenes saved before "User location" became on by default would keep refusing "take me to the kitchen".
+  // Switching it on once is safe; a later choice to turn it off in Settings is kept.
+  try {
+    const store = resolveStorage(storage);
+    if (store && store.getItem(`${PERM_MIGRATION}:${modelId}`) === null) {
+      r.scene.permissions.put.userLocation = true;
+      store.setItem(`${PERM_MIGRATION}:${modelId}`, "1");
+    }
+  } catch {
+    /* storage blocked: the scene is used as saved */
+  }
+  return r.scene;
 }
+
+const PERM_MIGRATION = 'acoustic:perm-userlocation-1';
 
 /** 'scene-<modelId>-<YYYY-MM-DD>.json', with the UTC date. */
 export function sceneFileName(modelId: string, date: Date): string {

@@ -82,7 +82,7 @@ describe('the front door', () => {
   it('has a heading, a labelled box and the demo link', () => {
     const { fetchFn } = server();
     startFrontDoor(root, { fetch: fetchFn, storage: memory(), navigate: () => {} });
-    expect(q('h1').textContent).toBe('Hear a place before you visit it');
+    expect(q('h1').textContent).toBe('Hear a Home Before You Rent or Buy It');
     const label = q<HTMLLabelElement>('label');
     expect(label.htmlFor).toBe(textarea().id);
     expect(textarea().maxLength).toBe(500);

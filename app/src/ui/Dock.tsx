@@ -1,5 +1,5 @@
 // Top bar: where we are on the left, view and sound controls on the right.
-import { ArrowLeft, CircleHelp, AudioWaveform, Box, Compass, DoorOpen, Map as MapIcon, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
+import { CircleHelp, AudioWaveform, Box, Compass, DoorOpen, Map as MapIcon, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
 import { FRONT_URL } from '../route';
 import { startTutorial } from './Tutorial';
 import { alternative, commands, setShown, ui } from './store';
@@ -34,7 +34,7 @@ export function Dock() {
 
       <div class="dock card" role="toolbar" aria-label="View and sound">
         <a data-tour="back" class="tool ghost back-link" href={FRONT_URL} title="Back to search">
-          <ArrowLeft size={16} /> <span class="lbl">Back</span>
+          <img class="back-mark" src="/darts-mark.svg" alt="" width={16} height={16} /> <span class="lbl">Back</span>
         </a>
         <button type="button" data-tour="blueprint" class={`tool ${bp.on ? 'on' : ''}`} disabled={!bp.enabled} aria-pressed={bp.on} title="Show the house outline (B)" onClick={() => commands.toggleBlueprint()}>
           <Layers size={16} /> <span class="lbl">Blueprint</span>

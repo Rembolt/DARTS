@@ -1,6 +1,5 @@
 // The first moment: sound needs a click to start anyway, so that click is the welcome.
 import { effect } from '@preact/signals';
-import { Headphones } from 'lucide-preact';
 import { commands, ui } from './store';
 
 const KEY = 'acoustic:started';
@@ -116,7 +115,7 @@ export function StartScreen() {
   return (
     <div class="start" role="dialog" aria-modal="true" aria-labelledby="start-title">
       <div class="start-card">
-        <Headphones size={28} strokeWidth={1.6} />
+        <img class="start-mark" src="/darts-mark.svg" alt="DARTS" width={36} height={36} />
         <h1 id="start-title">Put on headphones</h1>
         <p>Walk through the home and hear it: the street through the walls, each room's echo, what changes when you close a window.</p>
         <button type="button" class="btn primary big" onClick={() => pass(true)}>

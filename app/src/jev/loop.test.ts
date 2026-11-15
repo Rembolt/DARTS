@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createActions, type SceneEffects } from '../scene/actions';
 import { defaultScene } from '../scene/state';
 import { createStore } from '../scene/store';
-import { ask, type MessageParam } from './loop';
+import { ask, askedLast, MAX_HISTORY_MESSAGES, trimConvo, type MessageParam } from './loop';
 
 function fakeEffects(): SceneEffects {
   return {
@@ -155,5 +155,99 @@ describe('ask', () => {
 
     const res = await ask('Hi', [], { store, actions, effects, fetch: fetchFn as unknown as typeof fetch });
     expect(res.reply).toBe('The assistant is not available right now. The settings panel can do the same things.');
+  });
+});
+
+describe('trimConvo', () => {
+  const turn = (n: number, withTool = false): MessageParam[] => [
+    { role: 'user', content: `question ${n}\n\nScene summary:\n{"n":${n}}` },
+    ...(withTool
+      ? ([
+          { role: 'assistant', content: [{ type: 'tool_use', id: `t${n}`, name: 'measure', input: {} }] },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${n}`, content: '{}' }] },
+        ] as MessageParam[])
+      : []),
+    { role: 'assistant', content: [{ type: 'text', text: `answer ${n}` }] },
+  ];
+
+  it('drops the old scene summaries and keeps a short conversation whole', () => {
+    const out = trimConvo([...turn(1), ...turn(2, true)]);
+    expect(out).toHaveLength(6);
+    expect(out[0].content).toBe('question 1');
+    expect(out[2].content).toBe('question 2');
+  });
+
+  it('cuts a long conversation at a typed question, never inside a tool exchange', () => {
+    const long = Array.from({ length: 30 }, (_, i) => turn(i, true)).flat();
+    const out = trimConvo(long);
+    expect(out.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(out.length).toBeGreaterThan(MAX_HISTORY_MESSAGES - 4);
+    expect(typeof out[0].content).toBe('string');
+    expect(out[out.length - 1]).toEqual(long[long.length - 1]);
+  });
+
+  it('cuts by size too', () => {
+    const big = 'x'.repeat(50_000);
+    const out = trimConvo([0, 1, 2, 3].flatMap(n => [
+      { role: 'user', content: `q${n}` },
+      { role: 'assistant', content: [{ type: 'text', text: big }] },
+    ] as MessageParam[]));
+    expect(out).toHaveLength(4);
+    expect(out[0].content).toBe('q2');
+  });
+});
+
+describe('confirmation before a change', () => {
+  const sounds = { music: { kind: 'point' as const, levelDb: 0 } };
+  const placeThenAnswer = () => {
+    const bodies: { messages: MessageParam[] }[] = [];
+    let step = 0;
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return ++step === 1
+        ? okJson({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'place_speaker', input: { room: 'Kitchen', point: null, sound: 'music', levelDb: null } }] })
+        : okJson({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] });
+    });
+    return { bodies, fetchFn: fetchFn as unknown as typeof fetch };
+  };
+
+  it('knows whether the assistant asked last', () => {
+    expect(askedLast([])).toBe(false);
+    expect(askedLast([{ role: 'user', content: 'hi' }, { role: 'assistant', content: [{ type: 'text', text: 'It is quiet.' }] }])).toBe(false);
+    expect(askedLast([{ role: 'assistant', content: [{ type: 'text', text: 'I would add music.\n[[confirm]]' }] }])).toBe(true);
+    expect(askedLast([{ role: 'assistant', content: 'Shall I close them?' }])).toBe(true);
+  });
+
+  it('does not run a change the user was never asked about', async () => {
+    const store = createStore(defaultScene('Ki9YdfpNKum'));
+    const effects = fakeEffects();
+    const { bodies, fetchFn } = placeThenAnswer();
+    await ask('Put music in the kitchen', [], { store, actions: createActions(store, effects, sounds), effects, fetch: fetchFn });
+    expect(store.get().sources).toEqual([]);
+    const result = (bodies[1].messages.at(-1)!.content as { is_error?: boolean; content: string }[])[0];
+    expect(result.is_error).toBe(true);
+    expect(result.content).toContain('[[confirm]]');
+  });
+
+  it('runs it once the user answers the question', async () => {
+    const store = createStore(defaultScene('Ki9YdfpNKum'));
+    const effects = fakeEffects();
+    const { fetchFn } = placeThenAnswer();
+    const before: MessageParam[] = [
+      { role: 'user', content: 'Put music in the kitchen' },
+      { role: 'assistant', content: [{ type: 'text', text: 'I would put music in the Kitchen.\n[[confirm]]' }] },
+    ];
+    await ask('Yes, go ahead.', before, { store, actions: createActions(store, effects, sounds), effects, fetch: fetchFn });
+    expect(store.get().sources.map(s => s.id)).toEqual(['speaker-1']);
+  });
+});
+
+describe('trimConvo and thinking blocks', () => {
+  it('sends finished turns back without their thinking blocks, which are bound to the untrimmed conversation', () => {
+    const out = trimConvo([
+      { role: 'user', content: 'q1\n\nScene summary:\n{}' },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'text', text: 'a1' }] },
+    ]);
+    expect(out).toEqual([{ role: 'user', content: 'q1' }, { role: 'assistant', content: [{ type: 'text', text: 'a1' }] }]);
   });
 });

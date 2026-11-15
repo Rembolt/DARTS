@@ -43,7 +43,8 @@ export type ToWorker =
       doorIndex?: number;
     }
   | { type: 'setRooms'; rooms: RoomGeom[] }
-  | { type: 'loadOpenings'; openings: OpeningGeom[] }
+  /** `gaps`: openings with no door or window (archways, half walls): always open, so only cut out of the scan. */
+  | { type: 'loadOpenings'; openings: OpeningGeom[]; gaps?: GapGeom[] }
   | { type: 'setOpenings'; closed: string[] } // every other loaded opening is open
   | { type: 'setLayers'; traced: Record<string, boolean> }
   | { type: 'setQuality'; raysPerTrace: number; bounces: number; reverbRays: number }
@@ -65,6 +66,9 @@ export type OpeningGeom = {
   corners: [Vec3, Vec3, Vec3, Vec3]; // viewer coordinates
   thickness: number;
 };
+
+/** An opening with nothing to close in it, in viewer coordinates. */
+export type GapGeom = { id: string; corners: [Vec3, Vec3, Vec3, Vec3]; thickness: number };
 
 export type FromWorker =
   | {
@@ -100,7 +104,11 @@ export type FromWorker =
     }
   | { type: 'reverb'; roomId: string; echoTime: Bands; ms: number }
   | { type: 'roomsReady'; rooms: { id: string; triangles: number }[]; untagged: number; exteriorWalls: number; ms: number }
-  | { type: 'openingsReady'; openings: { id: string; meshClosed: boolean }[]; lines: Float32Array; ms: number }
+  /**
+   * `meshClosed`: the scan shows it shut (glass, a closed leaf). `moved`: openings and gaps slid along their wall onto
+   * the scan's real hole (the floor plan had them a little off), with their new corners.
+   */
+  | { type: 'openingsReady'; openings: { id: string; meshClosed: boolean }[]; moved?: { id: string; corners: [Vec3, Vec3, Vec3, Vec3] }[]; lines: Float32Array; ms: number }
   | { type: 'measure'; id: number; echoTime: Bands; sources: { id: string; levelDb: Bands; walls: number }[]; ms: number }
   | { type: 'walls'; id: number; walls: { distance: number; lossDb: Bands }[] }
   /** Per point, in the request's order: strength left after walls (3 bands, 0..1) and walls crossed. */

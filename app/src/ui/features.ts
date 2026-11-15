@@ -22,22 +22,28 @@ export type FieldClient = {
   onMessage(msg: FromWorker): boolean;
 };
 
+const FIELD_TIMEOUT_MS = 10_000;
+
 export function createFieldClient(post: (msg: ToWorker, transfer?: Transferable[]) => void): FieldClient {
   let id = 0;
   const pending = new Map<number, (r: FieldResult) => void>();
   const pendingWalls = new Map<number, (r: WallsResult['walls']) => void>();
   return {
+    // The worker reports a failed job without its id, and answers nothing before the mesh is loaded: an unanswered
+    // request ends by itself, so whoever waits (the heat map, the wall badges, a probe) can try again.
     walls(from, to) {
       const myId = ++id;
-      return new Promise(resolve => {
-        pendingWalls.set(myId, resolve);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => (pendingWalls.delete(myId), reject(new Error('walls request not answered'))), FIELD_TIMEOUT_MS);
+        pendingWalls.set(myId, r => (clearTimeout(timer), resolve(r)));
         post({ type: 'walls', id: myId, from, to });
       });
     },
     request(source, points) {
       const myId = ++id;
-      return new Promise(resolve => {
-        pending.set(myId, resolve);
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => (pending.delete(myId), reject(new Error('field request not answered'))), FIELD_TIMEOUT_MS);
+        pending.set(myId, r => (clearTimeout(timer), resolve(r)));
         const copy = points.slice();
         post({ type: 'field', id: myId, source, points: copy }, [copy.buffer]);
       });
@@ -65,6 +71,8 @@ export type Features = {
   setRoomLabels(labels: Map<string, string>): void;
   /** Hold A to compare. Keys come from ui/keys.ts, which listens on the page and the tour's window. */
   listenForCompare(): void;
+  /** Something the numbers depend on changed (an opening, a material, a source): measure the heat map and the probes again. */
+  invalidate(): void;
 };
 
 export function installFeatures(deps: {
@@ -89,11 +97,17 @@ export function installFeatures(deps: {
   // Heat map: street noise over this storey's floor.
   let heatAt: Vec3 | null = null;
   let heatBusy = false;
+  let heatAgain = false; // asked for while one was being built: build once more when it ends
+  let lastListener: Vec3 | null = null;
   const buildHeat = async (listener: Vec3) => {
     const mesh = deps.mesh();
     const srcs = deps.sources();
     const outdoor = srcs?.find(s => isOutdoorSource(s.id)) ?? srcs?.[0];
-    if (!mesh || !outdoor || heatBusy) return;
+    if (!mesh || !outdoor) return;
+    if (heatBusy) {
+      heatAgain = true;
+      return;
+    }
     heatBusy = true;
     heatAt = listener;
     try {
@@ -103,8 +117,15 @@ export function installFeatures(deps: {
       const db = new Float32Array(grid.cells.length);
       for (let i = 0; i < db.length; i++) db[i] = toDb(r.direct[i * 3 + 1]);
       ui.heat.value = { grid, db };
+    } catch (err) {
+      heatAt = null; // not answered: the next move tries again
+      console.warn('heat map:', err instanceof Error ? err.message : err);
     } finally {
       heatBusy = false;
+      if (heatAgain) {
+        heatAgain = false;
+        if (lastListener) void buildHeat(lastListener);
+      }
     }
   };
 
@@ -125,10 +146,13 @@ export function installFeatures(deps: {
         }));
         ui.probes.value = ui.probes.value.map(x => (x.id === p.id ? { ...x, readings } : x));
         measuring.delete(p.id);
+      }).catch(() => {
+        measuring.delete(p.id); // not answered (the mesh is still loading): measured on the next refresh
       });
     }
   });
 
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let labels = new Map<string, string>();
   let roomId: string | null = null;
   const showRoom = () => {
@@ -138,6 +162,7 @@ export function installFeatures(deps: {
 
   return {
     onListener(listener) {
+      lastListener = listener;
       const moved = heatAt ? Math.hypot(listener[0] - heatAt[0], listener[2] - heatAt[2]) : Infinity;
       const climbed = heatAt ? Math.abs(listener[1] - heatAt[1]) : Infinity;
       if (climbed > 1.2 || moved > 8) void buildHeat(listener);
@@ -153,6 +178,15 @@ export function installFeatures(deps: {
     setRoomLabels(next) {
       labels = next;
       showRoom();
+    },
+    invalidate() {
+      // Many changes arrive together (a slider, "close all the windows"): one refresh after they settle.
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        if (lastListener) void buildHeat(lastListener);
+        if (ui.probes.value.some(p => p.readings)) ui.probes.value = ui.probes.value.map(p => ({ ...p, readings: null }));
+        else ui.probes.value = [...ui.probes.value]; // probes still unmeasured get another try
+      }, 200);
     },
     listenForCompare() {
       onKeyDown(e => {

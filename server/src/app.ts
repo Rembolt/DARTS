@@ -13,8 +13,13 @@ export const BUNDLE_MISSING = 'Matterport Bundle missing. Run: npm run fetch-bun
 /** What the server's root answers when it has no built page to serve (local development: the page is on Vite). */
 export const API_ONLY = 'This is the API server. In development, open the app at http://localhost:5173';
 
-/** The routes that call paid services (Claude, Vexcel). Each gets its own per-IP limit when RATE_LIMIT_PER_MIN is set. */
-export const LIMITED_PATHS = ['/api/agent', '/api/jev', '/api/quick-summary', '/api/surroundings', '/api/map.jpg'];
+/** The routes that call paid services (Claude, Vexcel, ElevenLabs). Each gets its own per-IP limit when RATE_LIMIT_PER_MIN is set. */
+export const LIMITED_PATHS = ['/api/agent', '/api/jev', '/api/quick-summary', '/api/surroundings', '/api/map.jpg', '/api/defaults', '/api/tts', '/api/stt'];
+/** Speech is many short requests per answer (acknowledgements, tutorial lines, each sentence heard): it gets this many times the limit. */
+const VOICE_LIMIT_FACTOR = 4;
+const VOICE_PATHS = new Set(['/api/tts', '/api/stt']);
+/** The only routes that take a large JSON body (a whole conversation). Everything else stays at 4 kB. */
+const WIDE_BODY_PATHS = ['/api/jev'];
 
 export interface AppOptions {
   /** Folder holding the unpacked Matterport Bundle (written by `npm run fetch-bundle`). */
@@ -45,7 +50,7 @@ export function createApp(
   const password = env.SITE_PASSWORD?.trim();
   if (password) app.use(sitePassword(password));
   const perMinute = parseLimit(env.RATE_LIMIT_PER_MIN);
-  if (perMinute) for (const path of LIMITED_PATHS) app.use(path, rateLimit(perMinute));
+  if (perMinute) for (const path of LIMITED_PATHS) app.use(path, rateLimit(VOICE_PATHS.has(path) ? perMinute * VOICE_LIMIT_FACTOR : perMinute));
   const allowedIds = options.allowedIds ?? new Set([DEMO_MODEL_ID]);
   const isAllowed = (id: unknown): id is string => isModelId(id) && (id === DEMO_MODEL_ID || allowedIds.has(id));
   const has = (key: string) => Boolean(env[key]?.trim());
@@ -124,7 +129,12 @@ export function createApp(
     res.json(body);
   });
 
-  if (wideRouters.length > 0) app.use('/api', express.json({ limit: '256kb' }), ...wideRouters);
+  // The wide parser only on its own paths: mounted on all of /api it would parse every body first, and the 4 kB
+  // limit below would never apply.
+  if (wideRouters.length > 0) {
+    for (const path of WIDE_BODY_PATHS) app.use(path, express.json({ limit: '256kb' }));
+    app.use('/api', ...wideRouters);
+  }
   if (routers.length > 0) app.use('/api', express.json({ limit: '4kb' }), ...routers);
 
   // Production: the built page, from the same origin as /api and /bundle (the SDK key is tied to that domain).

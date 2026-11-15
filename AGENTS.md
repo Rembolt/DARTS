@@ -25,6 +25,9 @@ Keyboard shortcuts go through `ui/keys.ts` (capture phase on the page and the to
 bubbling key events). Radix Slider does not work under preact/compat (no thumb): use the native range input.
 V3 is built (front door, agent, quick audio summary, surroundings sounds, footsteps, not-possible screens): the front
 door is `/`, a property's tour is `/?m=<modelId>`.
+Agents speak through ElevenLabs: `POST /api/tts` (`server/src/tts/`, cached in `server/cache/tts/`) and `app/src/voice/speak.ts`;
+env `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_JEV`, `ELEVENLABS_VOICE_FRONT` (model `eleven_flash_v2_5`, override `ELEVENLABS_MODEL`).
+No key: text only. The tutorial narrates each step (`say` in `ui/Tutorial.tsx`).
 First time: `npm run fetch-bundle`, then `npm run build-index` (needs `costar-kit/data/`, unzipped with `COSTAR_ZIP_PASSWORD`),
 then `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 Outside sounds need these files in `app/public/audio/` (CC0 or public domain, listed in its `CREDITS.md`): `residential_ambience`,

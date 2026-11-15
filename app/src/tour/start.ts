@@ -16,13 +16,14 @@ import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
 import type { Bands, FromWorker, Vec3 } from '../sim/types';
 import { armAutoSound } from '../ui/StartScreen';
-import { ui } from '../ui/store';
+import { openingChange, ui } from '../ui/store';
 import { connectViewer, formatPose, viewerUrl, type MpSdk, type Pose } from '../viewer';
 import { browserSupport, isNotPossibleError, loadStatus, meshProblem, withTimeout } from './checks';
 import { showFailure } from './failure';
+import { attach as attachKeys } from '../ui/keys';
 import { mountTourUi } from './ui-bridge';
 
-const VIEWER_TIMEOUT_MS = 30_000;
+const VIEWER_TIMEOUT_MS = 120_000; // a slow network shows "still waiting" at 60 s (viewer.ts) before this gives up
 const WORKER_LOAD_TIMEOUT_MS = 60_000;
 /** Spec 8.3. No contract code of its own; shown as a viewer failure whose "Try again" reloads the page. */
 const CONTEXT_LOST: NotPossible = { code: 'viewer_failed', message: 'The 3D view stopped. Reload to continue.', retry: true };
@@ -170,20 +171,28 @@ export function startTour(modelId: string): void {
     },
     toggleAudio: () => audioButton.click(),
     toggleFootsteps: () => flipSteps(),
-    moveToPoint: async point => {
+    moveToPoint: async (point, inside) => {
       const s = sdkRef as (MpSdk & { Model?: { getData(): Promise<{ sweeps?: { sid?: string; id?: string; position?: { x: number; y: number; z: number } }[] }> } }) | null;
-      if (!s?.Model?.getData) return;
+      if (!s?.Model?.getData) return null;
       const data = await s.Model.getData();
       const sweeps = data.sweeps ?? [];
-      let best: { id: string; dist: number } | null = null;
-      for (const sw of sweeps) {
-        const id = sw.sid ?? sw.id;
-        if (!id || !sw.position) continue;
-        const dy = Math.abs(sw.position.y - point[1]);
-        const d = Math.hypot(sw.position.x - point[0], sw.position.z - point[2]) + (dy > 1.5 ? dy * 10 : 0);
-        if (!best || d < best.dist) best = { id, dist: d };
-      }
-      if (best) await s.Sweep.moveTo(best.id, { transition: 'fly', transitionTime: 800 });
+      // A capture point inside the room wins over a nearer one next door (a small bathroom often has none: then the nearest).
+      const pick = (onlyInside: boolean) => {
+        let best: { id: string; dist: number; at: Vec3 } | null = null;
+        for (const sw of sweeps) {
+          const id = sw.sid ?? sw.id;
+          if (!id || !sw.position) continue;
+          const dy = Math.abs(sw.position.y - point[1]);
+          if (onlyInside && (!inside || dy > 1.5 || !inside(sw.position.x, sw.position.z))) continue;
+          const d = Math.hypot(sw.position.x - point[0], sw.position.z - point[2]) + (dy > 1.5 ? dy * 10 : 0);
+          if (!best || d < best.dist) best = { id, dist: d, at: [sw.position.x, sw.position.y, sw.position.z] };
+        }
+        return best;
+      };
+      const best = pick(true) ?? pick(false);
+      if (!best) return null;
+      await s.Sweep.moveTo(best.id, { transition: (s.Sweep as { Transition?: { FLY?: string } }).Transition?.FLY ?? 'transition.fly', transitionTime: 800 });
+      return best.at;
     },
     retrace: () => {
       traces.invalidate();
@@ -386,7 +395,7 @@ export function startTour(modelId: string): void {
   let lastOpenings = ui.openings.value;
   cleanups.push(effect(() => {
     const next = ui.openings.value;
-    if (openingsToggled(lastOpenings, next)) openingSound?.play();
+    if (!openingChange.silent && openingsToggled(lastOpenings, next)) openingSound?.play();
     lastOpenings = next;
   }));
 
@@ -575,6 +584,9 @@ export function startTour(modelId: string): void {
     // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
     if (iframe.contentWindow) {
       listenForShortcut(iframe.contentWindow);
+      // After a click into the tour, keys go to its window: "/" (the chat) and the other shortcuts must hear them there too.
+      attachKeys(iframe.contentWindow);
+      iframe.addEventListener('load', () => attachKeys(iframe.contentWindow));
       uiBridge.setPointerTarget(iframe.contentWindow);
     }
     sdk.Camera.pose.subscribe(pose => {

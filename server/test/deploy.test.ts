@@ -109,6 +109,9 @@ describe('rate limit', () => {
     const limited = createApp({ RATE_LIMIT_PER_MIN: '1' });
     expect((await request(limited).post('/api/agent')).status).not.toBe(429);
     expect((await request(limited).post('/api/agent')).status).toBe(429);
+    // Speech gets four times the limit: one answer is several short requests.
+    for (let i = 0; i < 4; i++) expect((await request(limited).post('/api/tts')).status).not.toBe(429);
+    expect((await request(limited).post('/api/tts')).status).toBe(429);
     // Each route has its own count, and the free routes have none.
     expect((await request(limited).post('/api/jev')).status).not.toBe(429);
     expect((await request(limited).get('/api/health')).status).toBe(200);

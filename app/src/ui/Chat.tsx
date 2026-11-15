@@ -1,12 +1,13 @@
 // The agent, as a bar at the bottom. It grows upward to show the conversation, the steps the agent took, and any
 // change it suggests, which only happens when the user applies it.
-import { ArrowUp, Check, ChevronDown, ChevronRight, ChevronUp, Headphones, Loader2, Mic, MicOff, Square, X } from 'lucide-preact';
+import { ArrowUp, AudioLines, Volume2, VolumeX, Check, ChevronDown, ChevronRight, ChevronUp, Headphones, Loader2, Mic, MicOff, Square, X } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { plain, onKeyDown } from './keys';
 import { Orb, stateLabel } from './Orb';
 import { bandMean } from './compass';
 import { heardDb, outdoorTrim } from './scenario';
-import { agentState, commands, createSession, isOutdoorSource, pushChat, resolveProposal, ui, type ChatMessage } from './store';
+import { setVoiceMuted, stopSpeaking, voiceMuted } from '../voice/speak';
+import { agentState, commands, createSession, isOutdoorSource, latestAsk, pushChat, resolveProposal, ui, type ChatMessage } from './store';
 
 /** One suggestion from the numbers, or nothing. Never a generic list. */
 /** Render **bold** in a message as <strong> without touching innerHTML. */
@@ -154,6 +155,7 @@ export function Chat() {
       onKeyDown(e => {
         if (!plain(e, '/')) return;
         e.preventDefault();
+        window.focus(); // the key may have been pressed inside the tour's frame
         input.current?.focus();
         return true;
       }),
@@ -175,17 +177,25 @@ export function Chat() {
     ui.selection.value = null;
     ui.thinking.value = true;
     const session = createSession();
+    const request = commands.ask(q, session);
+    const mine = latestAsk.id;
     try {
-      await commands.ask(q, session);
+      await request;
     } catch (err) {
       session.say(`That failed: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {
-      ui.thinking.value = false;
+      // A spoken question may have replaced this one: then the newer request owns the "thinking" state.
+      if (mine === latestAsk.id) ui.thinking.value = false;
     }
   }
 
   function toggleVoice() {
+    if (ui.converse.value) {
+      ui.micMuted.value = !ui.micMuted.value; // in a voice conversation the mic button mutes the mic
+      return;
+    }
     const on = !ui.listening.value;
+    if (on) stopSpeaking(); // do not hear Jev while you talk
     ui.listening.value = on;
     commands.voice(on);
   }
@@ -261,10 +271,37 @@ export function Chat() {
           </p>
         )}
         {state === 'idle' && !focused && !text && <kbd class="slash">/</kbd>}
-        <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk instead of typing'} title="Talk instead of typing" onClick={toggleVoice}>
-          {ui.listening.value ? <MicOff size={16} /> : <Mic size={16} />}
+        <button
+          type="button"
+          class={`mic voice ${voiceMuted.value ? 'on' : ''}`}
+          aria-pressed={!voiceMuted.value}
+          aria-label={voiceMuted.value ? 'Turn the assistant voice on' : 'Turn the assistant voice off'}
+          title={voiceMuted.value ? 'Voice is off: click to let the assistant speak' : 'Voice is on: click to keep the assistant silent'}
+          onClick={() => setVoiceMuted(!voiceMuted.value)}
+        >
+          {voiceMuted.value ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
-        {ui.thinking.value ? (
+        <button
+          type="button"
+          class={`mic talk ${ui.converse.value ? 'on' : ''} ${ui.converse.value && ui.listening.value ? 'hearing' : ''}`}
+          aria-pressed={ui.converse.value}
+          aria-label={ui.converse.value ? 'End the conversation' : 'Start a voice conversation'}
+          title={ui.converse.value ? 'End the voice conversation' : 'Talk with Jev, hands free (headphones recommended)'}
+          onClick={() => commands.converse(!ui.converse.value)}
+        >
+          <AudioLines size={16} />
+        </button>
+        <button
+          type="button"
+          class={`mic ${ui.converse.value ? (ui.micMuted.value ? 'on' : '') : ui.listening.value ? 'on' : ''}`}
+          aria-pressed={ui.converse.value ? ui.micMuted.value : ui.listening.value}
+          aria-label={ui.converse.value ? (ui.micMuted.value ? 'Unmute the microphone' : 'Mute the microphone') : ui.listening.value ? 'Stop listening' : 'Talk instead of typing'}
+          title={ui.converse.value ? (ui.micMuted.value ? 'Microphone muted: click to unmute' : 'Mute the microphone') : 'Talk instead of typing'}
+          onClick={toggleVoice}
+        >
+          {ui.converse.value ? (ui.micMuted.value ? <MicOff size={16} /> : <Mic size={16} />) : ui.listening.value ? <MicOff size={16} /> : <Mic size={16} />}
+        </button>
+        {ui.thinking.value || ui.speaking.value ? (
           <button type="button" class="send stop" aria-label="Stop" title="Stop" onClick={() => commands.stop()}>
             <Square size={13} fill="currentColor" />
           </button>

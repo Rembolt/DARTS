@@ -61,11 +61,11 @@ export const PUT_ROWS: PutRow[] = ['furnishing', 'windows', 'doors', 'speakers',
 const SOURCE_KINDS = ['point', 'ambient', 'stereo'] as const;
 const DEFAULT_SURFACES: Record<SurfaceClass, MaterialName> = { wall: 'drywall', floor: 'wood_floor', ceiling: 'drywall', exteriorWall: 'drywall' };
 
-/** Permission defaults (spec 6.2): every GET on; PUT on except the user location; every material on; every layer off. */
+/** Permission defaults: every GET and every PUT on (moving the listener too, so "take me to the kitchen" just works in a demo; the toggles stay in Settings); every material on; every layer off. */
 export function defaultPermissions(): Permissions {
   return {
     get: Object.fromEntries(PERMISSION_ROWS.map(r => [r, true])) as Record<PermissionRow, boolean>,
-    put: { furnishing: true, windows: true, doors: true, speakers: true, userLocation: false },
+    put: { furnishing: true, windows: true, doors: true, speakers: true, userLocation: true },
     putMaterial: Object.fromEntries(Object.keys(MATERIALS).map(m => [m, true])),
     putLayer: {},
   };
