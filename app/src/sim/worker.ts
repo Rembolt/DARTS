@@ -4,6 +4,7 @@ import { applySetMaterials, applySetQuality } from './library';
 import { loadSim, type SimState } from './load';
 import { measure } from './measure';
 import { reverbJob } from './reverb-job';
+import { tagRooms } from './rooms';
 import { trace } from './trace';
 import type { Bands, FromWorker, ToWorker } from './types';
 
@@ -59,6 +60,9 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         break;
       case 'setLayers':
         applySetLayers(need(msg.type), msg);
+        break;
+      case 'setRooms':
+        post(tagRooms(need(msg.type), msg));
         break;
       case 'measure':
         // A trace and a reverb job at the point; lastEstimate stays the listener's.
