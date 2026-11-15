@@ -28,6 +28,7 @@ export function Panel({
   extra,
   className = '',
   below,
+  anchor = 'top',
   children,
 }: {
   id: string;
@@ -36,6 +37,8 @@ export function Panel({
   className?: string;
   /** Until moved, sit under this other panel (and follow it when it folds), instead of at a fixed spot. */
   below?: string;
+  /** Which edge the panel's default spot hangs from. A bottom-anchored one grows upward, so its height cap is the space above it. */
+  anchor?: 'top' | 'bottom';
   children: ComponentChildren;
 }) {
   const root = useRef<HTMLElement>(null);
@@ -78,7 +81,8 @@ export function Panel({
       : undefined;
   // However tall the content, the panel stays on screen: the body scrolls inside what is left below the header.
   const top = moved ? state.y! : auto ?? root.current?.offsetTop ?? 0;
-  const bodyMax = stage.h ? Math.max(120, stage.h - top - BOTTOM_MARGIN - 44) : undefined;
+  const bottomAnchored = anchor === 'bottom' && !moved;
+  const bodyMax = !stage.h ? undefined : bottomAnchored ? Math.max(120, stage.h - 72 - 70 - 44) : Math.max(120, stage.h - top - BOTTOM_MARGIN - 44);
 
   return (
     <section ref={root} data-panel={id} class={`panel floating ${className} ${collapsed ? 'is-collapsed' : ''}`} style={style} aria-label={title}>

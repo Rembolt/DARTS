@@ -24,7 +24,7 @@ export function SoundCompass() {
   const level = (id: string, strength: number) => heardDb(strength, id === 'outdoor' ? trim.db : 0);
 
   return (
-    <Panel id="compass" title="Sound around you" className="p-compass">
+    <Panel id="compass" title="Sound around you" className="p-compass" anchor="bottom">
       <div class="compass-body">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img">
         <circle cx={C} cy={C} r={OUTER} class="c-ring" />
