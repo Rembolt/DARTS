@@ -13,6 +13,7 @@ import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
 import type { Bands, FromWorker, Vec3 } from '../sim/types';
+import { armAutoSound } from '../ui/StartScreen';
 import { ui } from '../ui/store';
 import { connectViewer, formatPose, viewerUrl, type MpSdk, type Pose } from '../viewer';
 import { browserSupport, isNotPossibleError, loadStatus, meshProblem, withTimeout } from './checks';
@@ -426,6 +427,9 @@ export function startTour(modelId: string): void {
         fail({ ...base, message: `${base.message} The audio could not start.` });
       });
   });
+
+  // The button is wired: if the person already said yes (came in from the front door, or chose sound), start the sound now.
+  armAutoSound();
 
   // Dev console controls to find which part breaks up: __audio.mute('reverb' | 'echoes' | 'direct'), __audio.unmute(...),
   // __audio.log(true) to timestamp every trace and reverb swap. The sources keep playing either way.

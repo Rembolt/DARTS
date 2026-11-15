@@ -1,5 +1,5 @@
 import { h, render, type ComponentType } from 'preact';
-import { ArrowUp, Check, Headphones, Loader2, MapPin, Mic, MicOff, Square } from 'lucide-preact';
+import { ArrowUp, Check, ChevronLeft, ChevronRight, Headphones, Loader2, MapPin, Mic, MicOff, Square } from 'lucide-preact';
 
 /** A lucide icon for the plain-DOM front door: the same icon set and the same Preact runtime the tour's overlay uses. */
 export function icon(Icon: ComponentType<{ size?: number; strokeWidth?: number }>, size = 15): HTMLSpanElement {
@@ -10,4 +10,4 @@ export function icon(Icon: ComponentType<{ size?: number; strokeWidth?: number }
   return span;
 }
 
-export { ArrowUp, Check, Headphones, Loader2, MapPin, Mic, MicOff, Square };
+export { ArrowUp, Check, ChevronLeft, ChevronRight, Headphones, Loader2, MapPin, Mic, MicOff, Square };

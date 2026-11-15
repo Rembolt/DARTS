@@ -10,18 +10,13 @@ import { Settings } from './Settings';
 import { WallBadges } from './WallBadges';
 import { SoundCompass } from './SoundCompass';
 import { SurfaceStrip } from './SurfaceStrip';
-import { armAutoSound, StartScreen, startedBefore } from './StartScreen';
+import { StartScreen, startedBefore } from './StartScreen';
 import { Tutorial } from './Tutorial';
 import { commands, ui } from './store';
 
 ui.started.value = startedBefore();
 
 export function App() {
-  useEffect(() => {
-    // After a reload the headphones screen is skipped, so sound waits for the first click or key press.
-    const t = setTimeout(armAutoSound, 1500);
-    return () => clearTimeout(t);
-  }, []);
   useEffect(
     () =>
       onKeyDown(e => {

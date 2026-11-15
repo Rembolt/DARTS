@@ -5,6 +5,7 @@ import { commands, ui } from './store';
 
 const KEY = 'acoustic:started';
 const MUTED = 'acoustic:muted';
+const ENTERED = 'acoustic:entered'; // when the front door sent you in, set by the front door
 
 function mutedByChoice(): boolean {
   try {
@@ -30,6 +31,12 @@ function setMuted(on: boolean): void {
  */
 export function armAutoSound(): void {
   if (!ui.started.value || mutedByChoice() || ui.audio.value !== 'off') return;
+  // Chrome keeps "the person has clicked on this site" across a same-site page load: arriving by a click (from the front door)
+  // the sound can start at once. Otherwise it waits for the first click or key press below.
+  if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) {
+    commands.toggleAudio();
+    return;
+  }
   const docs = new Set<Document>();
   const go = (e: Event) => {
     if ((e.target as Element | null)?.closest?.('[data-tour="sound"], .start')) return; // that button does its own toggling
@@ -77,12 +84,17 @@ effect(() => {
 });
 
 /**
- * Skip the headphones screen only for someone who chose no sound this visit. Everyone else sees it on every load: a browser
- * will not play sound until a click, so "Start listening" is that click, and sound is on from the first moment.
+ * The headphones screen is skipped for someone who chose no sound this visit, and for someone who just arrived by clicking
+ * "Listen inside" on the front door (that click was the "yes, play it", and Chrome lets sound start after it). Everyone else
+ * sees it on every load: a browser will not play sound until a click, so "Start listening" is that click.
  */
 export function startedBefore(): boolean {
   try {
-    return sessionStorage.getItem(KEY) === '1' && sessionStorage.getItem(MUTED) === '1';
+    if (sessionStorage.getItem(KEY) !== '1') return false;
+    if (sessionStorage.getItem(MUTED) === '1') return true;
+    const entered = Number(sessionStorage.getItem(ENTERED));
+    const justArrived = Number.isFinite(entered) && Date.now() - entered < 15_000;
+    return justArrived && !!(navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive;
   } catch {
     return false;
   }

@@ -419,3 +419,5 @@ button.process-line:hover { color: var(--ink-2); }
 .tut-list b { color: var(--ink); font-weight: 600; }
 .tut-ico { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--raised); color: var(--ink); }
 .tut-dimsvg { position: absolute; left: 0; top: 0; pointer-events: none; animation: fade var(--enter) var(--ease); }
+.suggest-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: none; }
+.suggest-row .hint-line { justify-self: auto; }

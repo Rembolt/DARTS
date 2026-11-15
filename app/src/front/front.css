@@ -1232,3 +1232,98 @@
 .fd .fd-map .fd-map-note {
   z-index: 1;
 }
+
+/* A thin line between the two cities. It fades next to the selected one, which has its own green block. */
+.fd .fd-chip + .fd-chip {
+  position: relative;
+}
+.fd .fd-chip + .fd-chip::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background: var(--line-strong, #cfc6b4);
+  transition: opacity 120ms var(--ease);
+}
+.fd .fd-chip[aria-pressed='true']::before,
+.fd .fd-chip[aria-pressed='true'] + .fd-chip::before {
+  opacity: 0;
+}
+
+/* A wide rooms table must scroll inside its card, never push the card (or the chat) wider: every grid level gets one
+   column that can shrink below its content. */
+.fd .fd-log,
+.fd .fd-cards,
+.fd .fd-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+.fd .fd-card,
+.fd .fd-cards,
+.fd .fd-log,
+.fd .fd-rooms {
+  min-width: 0;
+  max-width: 100%;
+}
+.fd .fd-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.fd .fd-table-wrap table {
+  min-width: 560px; /* readable columns; the wrapper scrolls sideways when the card is narrower */
+}
+
+/* The properties: one row, swipe or step with the arrows. The next card peeks in so it is clear there is more. */
+.fd .fd-log > .fd-cards {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 2px;
+  padding: 2px 2px 10px;
+  margin: 0 -2px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.fd .fd-log > .fd-cards > .fd-card {
+  flex: 0 0 min(88%, 420px);
+  scroll-snap-align: center;
+  align-content: start;
+}
+.fd .fd-cardnav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--ink-2);
+  font: 600 12px/1 var(--font);
+}
+.fd .fd-cardnav[hidden] {
+  display: none;
+}
+.fd .fd-navbtn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-solid);
+  color: var(--ink);
+  cursor: pointer;
+}
+.fd .fd-navbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Rows in the chat never shrink below their content: a horizontally scrolling row has no minimum height of its own and was
+   squeezed to a sliver when the chat filled the panel. The chat scrolls instead. */
+.fd .fd-log {
+  grid-auto-rows: max-content;
+}
+.fd .fd-log > .fd-cards {
+  min-height: max-content;
+}

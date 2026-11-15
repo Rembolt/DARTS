@@ -48,6 +48,26 @@ function contextHint(): { text: string; ask: string } | null {
   return null;
 }
 
+type Suggestion = { text: string; ask: string };
+
+/** A few questions that fit what is on screen right now: the room you are in, the street, the windows, the echo. */
+function suggestions(): Suggestion[] {
+  const out: Suggestion[] = [];
+  const hint = contextHint();
+  if (hint) out.push(hint);
+  const room = ui.room.value?.label;
+  const echo = ui.sound.value?.echoTime[1];
+  const windowsOpen = ui.openings.value.filter(o => o.type === 'window' && o.open).length;
+  const doorsOpen = ui.openings.value.filter(o => o.type === 'door' && o.open).length;
+  if (echo !== undefined && echo > 0.7) out.push({ text: 'Too echoey? Ask how to reduce it', ask: `How can I make the ${room ?? 'room'} less echoey?` });
+  else if (room) out.push({ text: `How echoey is the ${room.toLowerCase()}?`, ask: `How echoey is the ${room}?` });
+  if (!hint && windowsOpen > 0) out.push({ text: 'What if I close the windows?', ask: 'What changes if I close all the windows?' });
+  if (doorsOpen > 2) out.push({ text: 'What if I close the doors?', ask: 'What changes if I close all the doors?' });
+  if (ui.speakers.value.length === 0) out.push({ text: 'How would music sound here?', ask: 'Put music in this room and tell me how it sounds' });
+  out.push({ text: 'Which room is quietest?', ask: 'Which room is the quietest, and why?' });
+  return out.slice(0, 3);
+}
+
 function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['steps'] }) {
   const [open, setOpen] = useState(false);
   const running = steps.find(st => st.status === 'run');
@@ -140,7 +160,7 @@ export function Chat() {
     [],
   );
   const [focused, setFocused] = useState(false);
-  const hint = contextHint();
+  const ideas = suggestions();
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: 'smooth' });
@@ -204,10 +224,14 @@ export function Chat() {
           )}
         </div>
       )}
-      {!open && hint && state === 'idle' && (
-        <button type="button" class="hint-line" onClick={() => void send(hint.ask)}>
-          {hint.text}
-        </button>
+      {!open && ideas.length > 0 && state === 'idle' && !text && (
+        <div class="suggest-row" role="group" aria-label="Ideas to ask">
+          {ideas.map(i => (
+            <button key={i.text} type="button" class="hint-line" onClick={() => void send(i.ask)}>
+              {i.text}
+            </button>
+          ))}
+        </div>
       )}
       <form
         class={`card composer is-${state}`}

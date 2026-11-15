@@ -4,7 +4,7 @@ import { CITY_VIEWS, DEMO_MODEL_ID, NOT_POSSIBLE, type AgentEvent, type City, ty
 import { getJson, type NotPossibleError } from '../api';
 import { tourUrl } from '../route';
 import { rankCards, renderCard } from './card';
-import { ArrowUp, Check, Headphones, Loader2, MapPin, Mic, MicOff, Square, icon } from './icons';
+import { ArrowUp, Check, ChevronLeft, ChevronRight, Headphones, Loader2, MapPin, Mic, MicOff, Square, icon } from './icons';
 import { createCityMap, type Pin } from './map';
 import { askAgent } from './stream';
 import { createRecorder } from '../voice/whisper';
@@ -69,7 +69,7 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
     onCity: city => apply({ type: 'city', city }),
     onPin: id => {
       const card = cards.querySelector<HTMLElement>(`[data-id="${id}"]`);
-      card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      card?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
       card?.focus({ preventScroll: true });
     },
     onHover: id => hover(id),
@@ -200,7 +200,44 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   head.append(cityRow, health);
   const log = el('div', 'fd-log');
   log.setAttribute('role', 'log');
-  log.append(userMsg, steps, alertBox, answer, cards, leftOut);
+  // The properties sit in one row you swipe or step through, instead of a long list down the chat.
+  const nav = el('div', 'fd-cardnav');
+  nav.hidden = true;
+  const prev = el('button', 'fd-navbtn');
+  prev.type = 'button';
+  prev.setAttribute('aria-label', 'Previous property');
+  prev.append(icon(ChevronLeft, 16));
+  const next = el('button', 'fd-navbtn');
+  next.type = 'button';
+  next.setAttribute('aria-label', 'Next property');
+  next.append(icon(ChevronRight, 16));
+  const count = el('span', 'fd-navcount');
+  count.setAttribute('aria-live', 'polite');
+  nav.append(prev, count, next);
+  const cardEls = () => Array.from(cards.querySelectorAll<HTMLElement>('.fd-card'));
+  const currentCard = () => {
+    const all = cardEls();
+    const mid = cards.scrollLeft + cards.clientWidth / 2;
+    let best = 0;
+    all.forEach((c, i) => {
+      if (Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid) < Math.abs(all[best].offsetLeft + all[best].offsetWidth / 2 - mid)) best = i;
+    });
+    return best;
+  };
+  const paintNav = () => {
+    const n = cardEls().length;
+    nav.hidden = n < 2;
+    const at = currentCard();
+    count.textContent = `${at + 1} of ${n}`;
+    prev.disabled = at <= 0;
+    next.disabled = at >= n - 1;
+  };
+  const step = (by: number) => cardEls()[Math.max(0, Math.min(cardEls().length - 1, currentCard() + by))]?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  prev.addEventListener('click', () => step(-1));
+  next.addEventListener('click', () => step(1));
+  cards.addEventListener('scroll', paintNav, { passive: true });
+  new MutationObserver(paintNav).observe(cards, { childList: true });
+  log.append(userMsg, steps, alertBox, answer, nav, cards, leftOut);
   log.hidden = true;
   const center = el('main', 'card fd-center');
   center.append(head, log, form, hint, foot);
@@ -260,7 +297,20 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
     map.setHover(hoveredCard);
   }
 
+  /** Going in from here is the click that says "yes, play it": the tour skips its headphones screen and starts the sound. */
+  function wantSound(): void {
+    try {
+      sessionStorage.setItem('acoustic:started', '1');
+      sessionStorage.removeItem('acoustic:muted');
+      sessionStorage.setItem('acoustic:entered', String(Date.now()));
+    } catch {
+      /* private mode: the tour shows its headphones screen, which is the same click */
+    }
+  }
+  skip.addEventListener('click', wantSound);
+
   function enter(modelId: string): void {
+    wantSound();
     stop(); // a run still going would otherwise come back from the back/forward cache showing Stop
     save(state, storage);
     navigate(tourUrl(modelId));
