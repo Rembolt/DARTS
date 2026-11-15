@@ -5,6 +5,8 @@ export type Pose = {
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number };
   mode: string;
+  /** The tour's 4×4 projection matrix (16 values), as the Bundle's `Camera.Pose.projection`. */
+  projection: ArrayLike<number>;
 };
 
 /** The part of the Matterport SDK we use. Later steps add `Room`, `Pointer` and `Conversion`. */

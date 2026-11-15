@@ -22,3 +22,6 @@ dist/
 server/bundle/
 server/cache/
 server/.bundle-tmp-*/
+
+# superpowers plan workspaces (ledgers, briefs)
+.superpowers/

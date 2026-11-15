@@ -59,12 +59,12 @@ describe('startFailureMessage', () => {
 
 describe('formatPose', () => {
   it('shows position, rotation and mode', () => {
-    expect(formatPose({ position: { x: 1.234, y: 1.5, z: -0.4 }, rotation: { x: -10, y: 45.25 }, mode: 'mode.inside' }))
+    expect(formatPose({ position: { x: 1.234, y: 1.5, z: -0.4 }, rotation: { x: -10, y: 45.25 }, mode: 'mode.inside', projection: [] }))
       .toBe('x 1.23  y 1.50  z -0.40 m  ·  pitch -10.0°  yaw 45.3°  ·  inside');
   });
 
   it('works in dollhouse mode', () => {
-    expect(formatPose({ position: { x: 0, y: 12, z: 0 }, rotation: { x: -60, y: 0 }, mode: 'mode.dollhouse' }))
+    expect(formatPose({ position: { x: 0, y: 12, z: 0 }, rotation: { x: -60, y: 0 }, mode: 'mode.dollhouse', projection: [] }))
       .toBe('x 0.00  y 12.00  z 0.00 m  ·  pitch -60.0°  yaw 0.0°  ·  dollhouse');
   });
 });
