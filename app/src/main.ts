@@ -3,7 +3,7 @@ import { createToggle } from './blueprint/toggle';
 import { createBlueprint } from './blueprint/view';
 import { simConfig } from './config';
 import { formatSimReady, startSim } from './sim/client';
-import { connectViewer, formatPose, viewerUrl } from './viewer';
+import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
 const status = document.getElementById('status')!;
 const poseLine = document.getElementById('pose')!;
@@ -14,6 +14,8 @@ const canvas = document.getElementById('blueprint') as HTMLCanvasElement;
 const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
 
 const blueprint = createBlueprint(canvas);
+let latestPose: Pose | null = null;
+let blueprintLines: Float32Array | null = null;
 const toggle = createToggle();
 
 function showToggle(): void {
@@ -53,6 +55,7 @@ async function startSimulation(modelId: string): Promise<void> {
     const ready = await startSim().load(obj, simConfig());
     simLine.textContent = formatSimReady(ready);
     blueprint.setLines(ready.lines);
+    blueprintLines = ready.lines;
     toggle.ready();
     showToggle();
     console.info('sim ready', {
@@ -98,7 +101,18 @@ async function start(): Promise<void> {
   sdk.Camera.pose.subscribe(pose => {
     poseLine.textContent = formatPose(pose);
     blueprint.setPose(pose);
+    latestPose = pose;
   });
+
+  if (import.meta.env.DEV) {
+    const { installBlueprintCheck } = await import('./debug');
+    installBlueprintCheck({
+      sdk,
+      getPose: () => latestPose,
+      getLines: () => blueprintLines,
+      getSize: () => ({ w: stage.clientWidth, h: stage.clientHeight }),
+    });
+  }
 }
 
 start().catch(showError);

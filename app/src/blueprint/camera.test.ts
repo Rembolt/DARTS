@@ -3,7 +3,8 @@ import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { applyPose, forwardOf } from './camera';
 import type { Pose } from '../viewer';
 
-const lens = new PerspectiveCamera(70, 1.5, 0.1, 100).projectionMatrix.toArray();
+// A real lens, laid out row by row like the Bundle's Camera.Pose.projection.
+const lens = new PerspectiveCamera(70, 1.5, 0.1, 100).projectionMatrix.clone().transpose().toArray();
 const pose = (yaw: number, pitch: number, position = { x: 0, y: 0, z: 0 }): Pose => ({
   position,
   rotation: { x: pitch, y: yaw },
@@ -13,11 +14,13 @@ const pose = (yaw: number, pitch: number, position = { x: 0, y: 0, z: 0 }): Pose
 const clean = (v: ArrayLike<number>) => Array.from(v, x => +x.toFixed(9) || 0);
 
 describe('applyPose', () => {
-  it('uses the pose projection as is, never its own fov', () => {
-    const odd = Array.from({ length: 16 }, (_, i) => (i % 5 === 0 ? 2 : i / 100));
+  it('reads the pose projection row by row, as the Bundle sends it, never its own fov', () => {
+    // Measured on the demo tour: the Bundle's projection has -1 at index 14 and the depth term at index 11.
+    const fromTour = [0.786, 0, 0, 0, 0, 1.3032, 0, 0, 0, 0, -1.0001, -0.2, 0, 0, -1, 0];
     const cam = new PerspectiveCamera(10, 3, 1, 2);
-    applyPose(cam, { ...pose(0, 0), projection: odd });
-    expect(cam.projectionMatrix.toArray()).toEqual(odd);
+    applyPose(cam, { ...pose(0, 0), projection: fromTour });
+    const expected = new Matrix4().set(...(fromTour as Parameters<Matrix4['set']>));
+    expect(cam.projectionMatrix.toArray()).toEqual(expected.toArray());
     const id = new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.projectionMatrixInverse).toArray();
     id.forEach((v, i) => expect(v).toBeCloseTo(i % 5 === 0 ? 1 : 0, 9));
   });

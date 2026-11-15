@@ -9,13 +9,25 @@ export type Pose = {
   projection: ArrayLike<number>;
 };
 
-/** The part of the Matterport SDK we use. Later steps add `Room`, `Pointer` and `Conversion`. */
+/** The part of the Matterport SDK we use. Later steps add `Room` and `Pointer`. */
 export type MpSdk = {
   App: {
     Phase: { PLAYING: string };
     state: { waitUntil(cond: (s: { phase: string }) => boolean): Promise<unknown> };
   };
-  Camera: { pose: { subscribe(cb: (pose: Pose) => void): { cancel(): void } } };
+  Camera: {
+    pose: { subscribe(cb: (pose: Pose) => void): { cancel(): void } };
+    rotate(horizontal: number, vertical: number, options?: { speed?: number }): Promise<void>;
+  };
+  Conversion: {
+    worldToScreen(
+      worldPos: { x: number; y: number; z: number },
+      cameraPose: Pose,
+      windowSize: { w: number; h: number },
+    ): { x: number; y: number; z: number };
+  };
+  Mode: { Mode: Record<string, string>; moveTo(mode: string): Promise<string> };
+  Sweep: { moveTo(sweepId: string, options?: { transition?: string; transitionTime?: number }): Promise<string> };
 };
 
 const SLOW_START_MS = 60_000;

@@ -9,9 +9,10 @@ CoStar data supplies the property context and Vexcel the exterior/aerial context
 
 ## Current state
 
-Build steps 1 to 3 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
+Build steps 1 to 4 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
 the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` caches it in `server/cache/`, and the
 sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
+The Blueprint button (or B) shows those lines over the tour through the tour's own camera (`app/src/blueprint/`).
 Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
@@ -63,6 +64,15 @@ These are not in the vendor docs and cost time to find out.
   `buildRayIndex`, so triangle numbers match the hits it reports.
 - **Worker load on the demo mesh:** 874 ms in headless Chrome; best of 6 in Node 782 ms (parse 316, index 173,
   materials 17, lines 228).
+- **`Camera.Pose.projection` is row-major** (−1 at index 14, depth term at index 11): transpose it for three.js
+  (`applyPose` in `app/src/blueprint/camera.ts`). Rotation: Euler order `YXZ`, yaw about +Y, yaw 0 / pitch 0 looks along −Z.
+- **Blueprint alignment, measured:** our projection matches `Conversion.worldToScreen` to under 1e-12 px at the start,
+  after turning, at two other sweeps and in dollhouse; screenshots show the mesh edges on the tour's walls and doorways,
+  so the mesh conversion `(x, y, z) → (x, z, −y)` is right. In dev, `__blueprintCheck()` and `__sdk` are on `window`.
+- **The mesh includes the trees outside:** most of the 135,730 blueprint lines are vegetation seen through the walls
+  (hence the 19 m height). A larger edge angle does not remove them; filtering them is open.
+- **Headless Chrome renders in software here** (about 200 ms a frame for the tour alone): use it for correctness
+  checks, never for frame times. A dollhouse screenshot with the blueprint shown, and floor-plan mode, did not finish.
 - **Headless Chrome prints nothing on this Windows setup** (`--dump-dom`, even `--version`). Drive it through
   `--remote-debugging-port` instead.
 - **Port 8080 may already be in use** by a teammate's test page. Pick another port for throwaway servers.
