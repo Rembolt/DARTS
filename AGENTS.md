@@ -16,7 +16,8 @@ The Blueprint button (or B) shows the house over the tour through the tour's own
 Solid mode (default) draws the mesh as a white model with its edges, X-ray draws edges only; ceilings hide outside.
 Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
-and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
+and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it, except where
+[docs/project/v3-design.md](docs/project/v3-design.md) replaces it: the single model id and the two hardcoded sources.
 
 ## Architecture (from the MVP design)
 
@@ -79,6 +80,10 @@ These are not in the vendor docs and cost time to find out.
   checks, never for frame times. A dollhouse screenshot with the blueprint shown, and floor-plan mode, did not finish.
 - **Headless Chrome prints nothing on this Windows setup** (`--dump-dom`, even `--version`). Drive it through
   `--remote-debugging-port` instead.
+- **`dimensionEstimates` defaults to imperial:** pass `(units: metric)`, lowercase. A missing room height is `0.0`.
+- **Commercial tours are often unusable** (75 sampled): 57% have no PI room data and 13% no mesh. All 75 homes sampled had both.
+- **Vexcel `elements/detect` takes about 2 s** for a 400 m square. Its `highway` label scores 0.52–0.57 on ordinary
+  streets, so use 0.70. There is no highway near the demo house.
 - **Port 8080 may already be in use** by a teammate's test page. Pick another port for throwaway servers.
 
 More results, including timings, are in [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) section 2 and the design's section 9.
@@ -88,6 +93,8 @@ More results, including timings, are in [docs/project/acoustic-experience.md](do
 | Path | What it is | Read when |
 |---|---|---|
 | [docs/project/mvp-design.md](docs/project/mvp-design.md) | The MVP build spec: scope, stack, hardcoded values, the rendering pipeline step by step, build steps | Before writing any code |
+| [docs/project/v2-design.md](docs/project/v2-design.md) | V2 after the MVP: settings panel and scene file, click-to-add speakers, material library, the Jev agent with GET/PUT permissions, closed doors and windows | Before building anything past MVP step 10 |
+| [docs/project/v3-design.md](docs/project/v3-design.md) | V3: the front-door agent (search, quick audio summary, ranking), any property, surroundings sounds from Vexcel, footsteps, and the "not possible" cases; its section 2 holds probe results for 150 models and the Vexcel detection call | Before building the front door or touching sources |
 | [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) | The product idea, a summary of the MVP, tested facts, and the final goal after the MVP | Product context, what comes after the MVP |
 | [docs/project/proposal.md](docs/project/proposal.md) | The original short proposal and data-access facts | Endpoint and auth facts |
 | [costar-kit/](costar-kit/) | The CoStar data kit: CSV starter lists, `data/*.jsonl` (≈400 MB), field docs, real-estate concepts, schemas | Working with property, listing, tenant or sale data |
