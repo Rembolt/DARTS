@@ -12,6 +12,11 @@ it('accepts a trace round trip', () => {
     type: 'trace', id: 1, listener: [0, 1.5, 0], ms: 200, echoTimeEstimate: [0.4, 0.5, 0.5],
     sources: [src], paths: new Float32Array(0), pathSource: new Uint8Array(0),
   };
+  const ready: FromWorker = {
+    type: 'ready', lines: new Float32Array(6), boundsMin: [0, 0, 0], boundsMax: [1, 1, 1], triangles: 12, loadMs: 5,
+    timings: { parse: 1, index: 2, materials: 1, lines: 1 },
+  };
+  expect(ready.type).toBe('ready');
   expect(req.type).toBe('trace');
   expect(res.type).toBe('trace');
 });

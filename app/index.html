@@ -32,7 +32,8 @@
         margin: 0;
       }
       #status,
-      #pose {
+      #pose,
+      #sim {
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;
@@ -41,6 +42,9 @@
       #pose {
         font-family: ui-monospace, monospace;
         color: #9cf;
+      }
+      #sim {
+        color: #bdb;
       }
       #viewer {
         flex: 1;
@@ -54,6 +58,7 @@
     <header>
       <p id="status">Loading…</p>
       <p id="pose"></p>
+      <p id="sim"></p>
     </header>
     <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
     <script type="module" src="/src/main.ts"></script>

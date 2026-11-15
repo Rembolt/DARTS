@@ -43,3 +43,8 @@ it('returns segments as pairs of points', () => {
   for (let i = 0; i < lines.length; i += 3) points.add(`${lines[i]},${lines[i + 1]},${lines[i + 2]}`);
   expect(points).toEqual(new Set(['0,0,0', '1,0,0', '1,0,1', '0,0,1']));
 });
+
+it('welds seams the same way far from the origin (beyond ±65 m)', () => {
+  const far = [0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1].map((v, i) => (i % 3 === 0 ? v + 100 : v));
+  expect(lineCount(extractLines(mesh(far, [0, 1, 2, 3, 4, 5]), 25))).toBe(4);
+});

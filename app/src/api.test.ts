@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkBundle, loadServerConfig } from './api';
+import { checkBundle, loadMesh, loadServerConfig } from './api';
 
 const respond = (status: number, body: unknown) =>
   (async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
@@ -72,5 +72,32 @@ describe('checkBundle', () => {
 
   it('reports the status for other failures', async () => {
     await expect(checkBundle(raw(404, '<html>', 'text/html'))).rejects.toThrow('Viewer page not available: HTTP 404');
+  });
+});
+
+describe('loadMesh', () => {
+  it('returns the bytes of the mesh', async () => {
+    let asked = '';
+    const ok = (async (url: string | URL | Request) => {
+      asked = String(url);
+      return new Response('v 0 0 0');
+    }) as typeof fetch;
+    const buf = await loadMesh('Ki9YdfpNKum', ok);
+    expect(new TextDecoder().decode(buf)).toBe('v 0 0 0');
+    expect(asked).toBe('/api/mesh/Ki9YdfpNKum');
+  });
+
+  it("passes on the server's error message", async () => {
+    await expect(loadMesh('Ki9YdfpNKum', respond(502, { error: 'Mesh download failed: HTTP 403' })))
+      .rejects.toThrow('Mesh download failed: HTTP 403');
+  });
+
+  it('reports an unreachable server', async () => {
+    await expect(loadMesh('Ki9YdfpNKum', down)).rejects.toThrow(UNREACHABLE);
+    await expect(loadMesh('Ki9YdfpNKum', raw(502, ''))).rejects.toThrow(UNREACHABLE);
+  });
+
+  it('reports the status for a non-JSON failure', async () => {
+    await expect(loadMesh('Ki9YdfpNKum', raw(404, '<html>', 'text/html'))).rejects.toThrow('Mesh download failed: HTTP 404');
   });
 });

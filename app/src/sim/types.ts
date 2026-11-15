@@ -32,7 +32,15 @@ export type ToWorker =
   | { type: 'reverb'; roomId: string; listener: Vec3 };
 
 export type FromWorker =
-  | { type: 'ready'; lines: Float32Array; boundsMin: Vec3; boundsMax: Vec3; loadMs: number }
+  | {
+      type: 'ready';
+      lines: Float32Array; // blueprint line segments as pairs of points
+      boundsMin: Vec3;
+      boundsMax: Vec3;
+      triangles: number;
+      loadMs: number; // parse + index + materials + lines, without the download
+      timings: { parse: number; index: number; materials: number; lines: number }; // ms
+    }
   | {
       type: 'trace';
       id: number;

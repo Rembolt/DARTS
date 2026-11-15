@@ -262,9 +262,14 @@ npm install -w app -D @types/three@0.187.0
 
 | Item | Value |
 |---|---|
-| Triangles | 116,539 (expected) |
-| Blueprint lines | |
-| Load in worker (parse / index / materials / lines) | |
-| Bounds, Y-up | |
-| Floor / wall / ceiling share | |
-| First `/api/mesh` request / cached | |
+| Triangles | 116,539 |
+| Blueprint lines | 135,733 at 25° (119,976 at 40°, 103,222 at 60°). 51,011 edges have one triangle (open scan); welding at 1 cm instead of 1 mm barely changes it |
+| Load in worker | 839 ms in headless Chrome. Node, best of 6: 782 ms (parse 316 / index 173 / materials 17 / lines 228) |
+| Bounds, Y-up | min (−16.718, −0.591, −25.414), max (26.709, 19.261, 20.658) |
+| Floor / wall / ceiling share | 10.4% / 68.5% / 21.1%; mean height floor 2.99 m, ceiling 7.53 m: winding faces into rooms, no flip |
+| First `/api/mesh` request / cached | 1.11 s / 0.035 s |
+
+Found while building:
+- `three-mesh-bvh` reorders `mesh.indices` in place. `loadSim` tags materials after building the index so triangle numbers match its hits; `load.test.ts` checks this with rays.
+- Our server answers 502 with a JSON message when Matterport fails, so `loadMesh` reads the message before applying the proxy-down rule.
+- Chrome on this machine prints nothing headless; the live check drives it through `--remote-debugging-port`.

@@ -58,3 +58,34 @@ export async function checkBundle(fetchFn: typeof fetch = fetch): Promise<void> 
   const plain = (res.headers.get('Content-Type') ?? '').startsWith('text/plain') ? text.trim() : '';
   throw new Error(plain || `Viewer page not available: HTTP ${res.status}`);
 }
+
+/** Download the property's mesh (an OBJ file) from our server. Rejects with a message ready to show. */
+export async function loadMesh(modelId: string, fetchFn: typeof fetch = fetch): Promise<ArrayBuffer> {
+  let res: Response;
+  try {
+    res = await fetchFn(`/api/mesh/${encodeURIComponent(modelId)}`);
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+  if (res.ok) {
+    try {
+      return await res.arrayBuffer();
+    } catch {
+      throw new Error('Mesh download interrupted');
+    }
+  }
+  // Our server answers 502 with a JSON message when Matterport fails, so read the message before the proxy rule.
+  const text = await res.text().catch(() => '');
+  let message = '';
+  try {
+    const body: unknown = JSON.parse(text);
+    if (typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string') {
+      message = (body as { error: string }).error;
+    }
+  } catch {
+    // not JSON: fall through
+  }
+  if (message) throw new Error(message);
+  if (proxyDown(res.status, text)) throw new Error(UNREACHABLE);
+  throw new Error(`Mesh download failed: HTTP ${res.status}`);
+}

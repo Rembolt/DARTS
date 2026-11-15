@@ -9,8 +9,10 @@ CoStar data supplies the property context and Vexcel the exterior/aerial context
 
 ## Current state
 
-Build steps 1 and 2 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
-and the self-hosted tour with the live camera pose. Run `npm run fetch-bundle` once before `npm run dev`.
+Build steps 1 to 3 of the MVP design are done: the app and server scaffold, the hardcoded config, the worker types,
+the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` caches it in `server/cache/`, and the
+sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
+Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it.
 
@@ -50,6 +52,19 @@ These are not in the vendor docs and cost time to find out.
 - **GraphQL schema introspection is blocked** (`BadFaithIntrospection`). Use the docs mirror or the playground at
   `https://beta-app.matterport.com/2026-princeton-hackathon/graphiql` for field names.
 - **Tested model:** `Ki9YdfpNKum` (9117 Richland Drive, Houston). Mesh, Bundle and ray tracing were all run on it.
+- **The 50k mesh file** (`defurnished_50k.obj`, 4.98 MB): only `v` and `f` lines plus 97 `g` group lines, all faces already
+  triangles, 85,456 vertices, 116,539 triangles. Its download link expires about 20 minutes after the query. Raw height
+  runs from −0.6 to 19.3 m, more than one storey.
+- **The mesh is open and bumpy:** about 51,000 edges have one triangle and most shared edges fold more than 25°, so the
+  blueprint gets 135,733 lines at the design's 25° (103,222 at 60°). Thinning them is a step 4 decision.
+- **Winding faces into the rooms:** floor triangles average 3.0 m high and ceiling triangles 7.5 m with the
+  `(b − a) × (c − a)` rule, so materials need no flip.
+- **`three-mesh-bvh` reorders `mesh.indices` in place** when it builds the index. Compute anything per triangle after
+  `buildRayIndex`, so triangle numbers match the hits it reports.
+- **Worker load on the demo mesh:** 839 ms in headless Chrome; best of 6 in Node 782 ms (parse 316, index 173,
+  materials 17, lines 228).
+- **Headless Chrome prints nothing on this Windows setup** (`--dump-dom`, even `--version`). Drive it through
+  `--remote-debugging-port` instead.
 - **Port 8080 may already be in use** by a teammate's test page. Pick another port for throwaway servers.
 
 More results, including timings, are in [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) section 2 and the design's section 9.

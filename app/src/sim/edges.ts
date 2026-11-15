@@ -14,11 +14,21 @@ export function extractLines(mesh: Mesh, angleDeg: number): Float32Array {
   const { positions: p, indices } = mesh;
   const triangleCount = indices.length / 3;
 
-  // Weld: one id per distinct (rounded) position.
+  // Weld: one id per distinct position, rounded to 1 mm. Number keys when every coordinate is within ±65 m of the
+  // origin (17 bits per axis, exact in a double), string keys otherwise.
   const weldOf = new Uint32Array(p.length / 3);
-  const ids = new Map<string, number>();
+  const OFFSET = 65536;
+  let small = true;
+  for (let i = 0; i < p.length; i++) {
+    if (Math.abs(Math.round(p[i] * WELD)) >= OFFSET) {
+      small = false;
+      break;
+    }
+  }
+  const ids = new Map<number | string, number>();
   for (let v = 0; v < weldOf.length; v++) {
-    const key = `${Math.round(p[3 * v] * WELD)},${Math.round(p[3 * v + 1] * WELD)},${Math.round(p[3 * v + 2] * WELD)}`;
+    const x = Math.round(p[3 * v] * WELD), y = Math.round(p[3 * v + 1] * WELD), z = Math.round(p[3 * v + 2] * WELD);
+    const key = small ? ((x + OFFSET) * 131072 + (y + OFFSET)) * 131072 + (z + OFFSET) : `${x},${y},${z}`;
     let id = ids.get(key);
     if (id === undefined) {
       id = ids.size;
@@ -41,47 +51,60 @@ export function extractLines(mesh: Mesh, angleDeg: number): Float32Array {
     normals[3 * t + 2] = nz / len;
   }
 
-  // Group triangle edges by their welded end points. Per edge: one vertex at each end (for output), the first two
-  // triangles and the direction each walks it in, and how many triangles share it.
-  type Edge = { v0: number; v1: number; t0: number; forward0: boolean; t1: number; forward1: boolean; count: number };
-  const edges = new Map<number, Edge>();
+  // Group triangle edges by their welded end points, in flat arrays (one slot per distinct edge). Per edge: one
+  // vertex at each end (for output), the first two triangles, whether each walks it low → high id, and how many share it.
+  const maxEdges = indices.length;
+  const v0 = new Uint32Array(maxEdges), v1 = new Uint32Array(maxEdges);
+  const t0 = new Uint32Array(maxEdges), t1 = new Uint32Array(maxEdges);
+  const fwd0 = new Uint8Array(maxEdges), fwd1 = new Uint8Array(maxEdges);
+  const count = new Uint32Array(maxEdges);
+  const slotOf = new Map<number, number>();
   for (let t = 0; t < triangleCount; t++) {
     for (let k = 0; k < 3; k++) {
       const va = indices[3 * t + k];
       const vb = indices[3 * t + ((k + 1) % 3)];
       const wa = weldOf[va], wb = weldOf[vb];
       if (wa === wb) continue; // collapsed edge
-      const forward = wa < wb;
+      const forward = wa < wb ? 1 : 0;
       const key = forward ? wa * weldCount + wb : wb * weldCount + wa;
-      const edge = edges.get(key);
-      if (!edge) {
-        edges.set(key, { v0: va, v1: vb, t0: t, forward0: forward, t1: -1, forward1: false, count: 1 });
-      } else {
-        if (edge.count === 1) {
-          edge.t1 = t;
-          edge.forward1 = forward;
-        }
-        edge.count++;
+      let slot = slotOf.get(key);
+      if (slot === undefined) {
+        slot = slotOf.size;
+        slotOf.set(key, slot);
+        v0[slot] = va;
+        v1[slot] = vb;
+        t0[slot] = t;
+        fwd0[slot] = forward;
+      } else if (count[slot] === 1) {
+        t1[slot] = t;
+        fwd1[slot] = forward;
       }
+      count[slot]++;
     }
   }
+  const edgeCount = slotOf.size;
 
   const cosLimit = Math.cos((angleDeg * Math.PI) / 180);
-  const out: number[] = [];
-  for (const e of edges.values()) {
-    let keep = e.count !== 2;
+  const out = new Float32Array(edgeCount * 6);
+  let written = 0;
+  for (let e = 0; e < edgeCount; e++) {
+    let keep = count[e] !== 2;
     if (!keep) {
       // Consistently wound neighbours walk a shared edge in opposite directions. If both walk it the same way,
       // one of them is wound backwards: flip its normal.
-      const sign = e.forward0 === e.forward1 ? -1 : 1;
-      const dot =
-        sign *
-        (normals[3 * e.t0] * normals[3 * e.t1] +
-          normals[3 * e.t0 + 1] * normals[3 * e.t1 + 1] +
-          normals[3 * e.t0 + 2] * normals[3 * e.t1 + 2]);
-      keep = dot < cosLimit;
+      const a = 3 * t0[e], b = 3 * t1[e];
+      const dot = normals[a] * normals[b] + normals[a + 1] * normals[b + 1] + normals[a + 2] * normals[b + 2];
+      keep = (fwd0[e] === fwd1[e] ? -dot : dot) < cosLimit;
     }
-    if (keep) out.push(p[3 * e.v0], p[3 * e.v0 + 1], p[3 * e.v0 + 2], p[3 * e.v1], p[3 * e.v1 + 1], p[3 * e.v1 + 2]);
+    if (keep) {
+      const a = 3 * v0[e], b = 3 * v1[e];
+      out[written++] = p[a];
+      out[written++] = p[a + 1];
+      out[written++] = p[a + 2];
+      out[written++] = p[b];
+      out[written++] = p[b + 1];
+      out[written++] = p[b + 2];
+    }
   }
-  return new Float32Array(out);
+  return out.slice(0, written);
 }
