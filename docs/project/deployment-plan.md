@@ -7,8 +7,8 @@ into `prod`.
 **Assumption:** Matterport adds our domain to the SDK key's allow list, so the self-hosted Bundle works there as it does
 on `localhost`. Until then, everything except the tour itself can be deployed and checked.
 
-**Domain:** `<domain>` below stands for the chosen name. The recommendation is `dartssound.com` (no DNS records on
-Nov 15; confirm at a registrar before relying on it).
+**Domain:** `<domain>` below stands for the chosen name: `dartsim.us` (DNS at Porkbun). Since Nov 15 the Fly app is
+`darts-oodfmq` (`darts-oodfmq.fly.dev`); read `dartssound` below as `darts-oodfmq`.
 
 ## 1. The setup at a glance
 

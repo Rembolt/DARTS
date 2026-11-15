@@ -29,9 +29,9 @@ jobs:
     # Secrets and SITE_URL live on this environment (Settings → Environments → production), limited to the prod branch.
     environment:
       name: production
-      url: ${{ vars.SITE_URL || 'https://dartssound.fly.dev' }}
+      url: ${{ vars.SITE_URL || 'https://dartsim.us' }}
     env:
-      SITE_URL: ${{ vars.SITE_URL || 'https://dartssound.fly.dev' }}
+      SITE_URL: ${{ vars.SITE_URL || 'https://dartsim.us' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
