@@ -1,6 +1,7 @@
 // The simulation worker (mvp-design.md 2 and 5). Message dispatch only; the work lives in the modules it calls.
 import { loadSim, type SimState } from './load';
 import { reverbJob } from './reverb-job';
+import { directField } from './field';
 import { trace } from './trace';
 import type { Bands, FromWorker, ToWorker } from './types';
 
@@ -30,6 +31,15 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         const result = trace(state, msg);
         lastEstimate = result.echoTimeEstimate;
         post(result, [result.paths.buffer, result.pathSource.buffer]);
+        break;
+      }
+      case 'field': {
+        if (!state) {
+          post({ type: 'error', message: 'field before load' });
+          break;
+        }
+        const result = directField(state, msg.source, msg.points, msg.id);
+        post(result, [result.direct.buffer, result.walls.buffer]);
         break;
       }
       case 'reverb': {

@@ -28,6 +28,11 @@ export type AudioEngine = {
   connectReverb(input: AudioNode): void;
   /** Dev aid: silence the direct sound or the echoes (the sources keep playing), to find which part breaks up. */
   setPartEnabled(part: 'direct' | 'echoes', on: boolean): void;
+  /**
+   * A level and treble change ahead of everything a source feeds (direct, echoes, reverb): for scenarios the trace
+   * does not model yet, such as traffic by time of day or windows closed. Estimates; 0 / 0 is neutral.
+   */
+  setSourceTrim(id: SourceId, gainDb: number, highDb: number): void;
   /** Stop the sounds and close the context. */
   stop(): Promise<void>;
 };
@@ -53,6 +58,8 @@ type Slot = Shelves & {
 type Voice = Shelves & {
   id: SourceId;
   source: AudioBufferSourceNode;
+  trim: GainNode | null;
+  trimHigh: BiquadFilterNode | null;
   gain: GainNode;
   panner: PannerNode;
   slots: Slot[];
@@ -128,6 +135,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   const relative = (p: Vec3): Vec3 => [p[0] - listener[0], p[1] - listener[1], p[2] - listener[2]];
 
   function makeVoice(id: SourceId, buffer: AudioBuffer): Voice {
+    // Everything below listens to `source`. The trim stage is put in front of it once both voices exist (addTrim).
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -155,13 +163,31 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     send.gain.value = 0;
     source.connect(send);
 
-    return { id, source, ...shelves, gain, panner, slots, send, position: [0, 0, 0], directMid: 1 };
+    return { id, source, trim: null, trimHigh: null, ...shelves, gain, panner, slots, send, position: [0, 0, 0], directMid: 1 };
   }
 
   const voices: Record<SourceId, Voice> = {
     indoor: makeVoice('indoor', indoorSound.buffer),
     outdoor: makeVoice('outdoor', outdoorSound.buffer),
   };
+
+  /** Put a level and treble stage between a voice's player and everything it feeds. */
+  function addTrim(v: Voice): void {
+    const trimHigh = ctx.createBiquadFilter();
+    trimHigh.type = 'highshelf';
+    trimHigh.frequency.value = AUDIO.highShelfHz;
+    trimHigh.gain.value = 0;
+    const trim = ctx.createGain();
+    trim.gain.value = 1;
+    v.source.disconnect();
+    v.source.connect(trimHigh).connect(trim);
+    trim.connect(v.low);
+    for (const slot of v.slots) trim.connect(slot.delay);
+    trim.connect(v.send);
+    v.trim = trim;
+    v.trimHigh = trimHigh;
+  }
+  for (const v of Object.values(voices)) addTrim(v);
 
   function directGain(v: Voice): number {
     return v.id === 'indoor' ? indoorDirectGain(distance(listener, v.position), v.directMid) : outdoorDirectGain(v.directMid);
@@ -231,6 +257,14 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
       v.position = [...position];
       placePanner(v.panner, relative(v.position));
       updateGain(v);
+    },
+
+    setSourceTrim(id, gainDb, highDb) {
+      if (stopped) return;
+      const v = voices[id];
+      if (!v.trim || !v.trimHigh) return;
+      smooth(v.trim.gain, Math.pow(10, gainDb / 20));
+      smooth(v.trimHigh.gain, Math.max(-AUDIO.maxShelfDb, Math.min(AUDIO.maxShelfDb, highDb)));
     },
 
     setPartEnabled(part, on) {

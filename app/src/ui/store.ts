@@ -4,6 +4,8 @@
 import { signal } from '@preact/signals';
 import { toast } from 'sonner';
 import type { Bands, SourceResult, Vec3 } from '../sim/types';
+import type { FloorGrid } from './heat';
+import type { TimeOfDay } from './scenario';
 import type { Pose } from '../viewer';
 
 export type SoundKind = 'point' | 'ambient' | 'stereo';
@@ -41,12 +43,14 @@ export type Opening = {
 
 export type Step = { label: string; status: 'run' | 'done' | 'fail'; detail?: string };
 export type ProposalStatus = 'pending' | 'applied' | 'dismissed';
+export type Probe = { id: string; position: Vec3; readings: { sourceId: string; db: number; walls: number; bands: Bands }[] | null };
+
 export type ChatMessage =
   | { id: number; kind: 'text'; role: 'user' | 'jev'; text: string }
   /** What the agent is doing, step by step, so the user sees the whole process. */
   | { id: number; kind: 'process'; steps: Step[] }
   /** A change the agent suggests. Nothing happens until the user applies it. */
-  | { id: number; kind: 'proposal'; title: string; detail: string; changes: string[]; previewIds: string[]; status: ProposalStatus };
+  | { id: number; kind: 'proposal'; title: string; detail: string; changes: string[]; previewIds: string[]; previewOpen?: boolean; status: ProposalStatus };
 export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type Selection = { kind: 'speaker' | 'opening'; id: string } | null;
 export type AudioState = 'off' | 'starting' | 'on';
@@ -65,6 +69,18 @@ export const ui = {
   /** True when the opening list is stand-in data, not read from Property Intelligence yet. */
   openingsAreDemo: signal(true),
   selection: signal<Selection>(null),
+  /** What a click in placement mode drops. */
+  placeKind: signal<'speaker' | 'probe'>('speaker'),
+  /** Listening probes: a point that shows how loud each source is there. `readings` null while measuring. */
+  probes: signal<Probe[]>([]),
+  timeOfDay: signal<TimeOfDay>('rush'),
+  /** True while A (or a compare button) is held: you hear and see the alternative. */
+  comparing: signal(false),
+  /** Street noise over the floor of this storey, dB below outside per grid cell. */
+  heat: signal<{ grid: FloorGrid; db: Float32Array } | null>(null),
+  room: signal<{ id: string; label: string } | null>(null),
+  /** The headphones screen has been passed. */
+  started: signal(false),
   /** The last trace, for the sound compass. `positions` matches `sources` by index. */
   sound: signal<{ listener: Vec3; sources: SourceResult[]; positions: Vec3[]; echoTime: Bands } | null>(null),
   /** Pin id → behind a wall from where the camera is. Unknown ids count as visible. */
@@ -106,7 +122,7 @@ export type AgentSession = {
   step(label: string): { done(detail?: string): void; fail(detail?: string): void };
   say(text: string): void;
   /** Suggest a change; `apply` runs only if the user accepts. */
-  propose(p: { title: string; detail: string; changes: string[]; previewIds?: string[]; apply: () => void }): void;
+  propose(p: { title: string; detail: string; changes: string[]; previewIds?: string[]; previewOpen?: boolean; apply: () => void }): void;
 };
 
 const pendingApply = new Map<number, () => void>();
@@ -133,10 +149,10 @@ export function createSession(): AgentSession {
       ui.speaking.value = true;
       setTimeout(() => (ui.speaking.value = false), Math.min(4000, 900 + text.length * 25));
     },
-    propose({ title, detail, changes, previewIds = [], apply }) {
+    propose({ title, detail, changes, previewIds = [], previewOpen, apply }) {
       const id = nextId++;
       pendingApply.set(id, apply);
-      ui.chat.value = [...ui.chat.value.slice(-29), { id, kind: 'proposal', title, detail, changes, previewIds, status: 'pending' }];
+      ui.chat.value = [...ui.chat.value.slice(-29), { id, kind: 'proposal', title, detail, changes, previewIds, previewOpen, status: 'pending' }];
     },
   };
 }
@@ -216,4 +232,47 @@ export function toggleOpening(id: string): void {
 
 export function pushChat(role: 'user' | 'jev', text: string): void {
   ui.chat.value = [...ui.chat.value.slice(-29), { id: nextId++, kind: 'text', role, text }];
+}
+
+/** The open suggestion whose change can be heard before applying it, if any. */
+export function pendingPreview(): { ids: string[]; open: boolean; title: string } | null {
+  for (let i = ui.chat.value.length - 1; i >= 0; i--) {
+    const m = ui.chat.value[i];
+    if (m.kind === 'proposal' && m.status === 'pending' && m.previewOpen !== undefined && m.previewIds.length)
+      return { ids: m.previewIds, open: m.previewOpen, title: m.title };
+  }
+  return null;
+}
+
+/**
+ * The alternative that A/B compare plays: the open suggestion if there is one, otherwise every window flipped
+ * (all closed if any is open, else all open). Returns the openings as they would be, and a name for it.
+ */
+export function alternative(): { openings: Opening[]; label: string } {
+  const list = ui.openings.value;
+  const p = pendingPreview();
+  if (p) {
+    const ids = new Set(p.ids);
+    return { openings: list.map(o => (ids.has(o.id) ? { ...o, open: p.open } : o)), label: p.title };
+  }
+  const anyOpen = list.some(o => o.type === 'window' && o.open);
+  return {
+    openings: list.map(o => (o.type === 'window' ? { ...o, open: !anyOpen } : o)),
+    label: anyOpen ? 'All windows closed' : 'All windows open',
+  };
+}
+
+/** The openings you are hearing right now: the alternative while comparing, the real ones otherwise. */
+export function heardOpenings(): Opening[] {
+  return ui.comparing.value ? alternative().openings : ui.openings.value;
+}
+
+export function addProbe(position: Vec3): Probe {
+  const probe: Probe = { id: newId('probe'), position, readings: null };
+  ui.probes.value = [...ui.probes.value.slice(-5), probe];
+  return probe;
+}
+
+export function removeProbe(id: string): void {
+  ui.probes.value = ui.probes.value.filter(p => p.id !== id);
 }

@@ -1,6 +1,6 @@
 // Top bar: where we are on the left, view and sound controls on the right.
-import { Box, Layers, Plus, Volume2, VolumeX, X } from 'lucide-preact';
-import { commands, ui } from './store';
+import { Box, Crosshair, Layers, Plus, Volume2, VolumeX, X } from 'lucide-preact';
+import { alternative, commands, ui } from './store';
 
 /** What the status line says to a person, not the raw log text. */
 function statusText(raw: string): string {
@@ -13,6 +13,14 @@ export function Dock() {
   const audio = ui.audio.value;
   const placing = ui.placing.value;
   const count = ui.speakers.value.length;
+  const kind = ui.placeKind.value;
+  const place = (k: 'speaker' | 'probe') => {
+    if (placing && kind === k) ui.placing.value = false;
+    else {
+      ui.placeKind.value = k;
+      ui.placing.value = true;
+    }
+  };
 
   return (
     <>
@@ -34,13 +42,22 @@ export function Dock() {
         <span class="sep" />
         <button
           type="button"
-          class={`tool ${placing ? 'on accent' : ''}`}
-          aria-pressed={placing}
+          class={`tool ${placing && kind === 'speaker' ? 'on accent' : ''}`}
+          aria-pressed={placing && kind === 'speaker'}
           title="Add a speaker (S)"
-          onClick={() => (ui.placing.value = !placing)}
+          onClick={() => place('speaker')}
         >
-          {placing ? <X size={16} /> : <Plus size={16} />} <span class="lbl">{placing ? 'Cancel' : 'Speaker'}</span>
+          {placing && kind === 'speaker' ? <X size={16} /> : <Plus size={16} />} <span class="lbl">{placing && kind === 'speaker' ? 'Cancel' : 'Speaker'}</span>
           {!placing && count > 0 && <em>{count}</em>}
+        </button>
+        <button
+          type="button"
+          class={`tool ${placing && kind === 'probe' ? 'on accent' : ''}`}
+          aria-pressed={placing && kind === 'probe'}
+          title="Drop a listening probe (L)"
+          onClick={() => place('probe')}
+        >
+          {placing && kind === 'probe' ? <X size={16} /> : <Crosshair size={16} />} <span class="lbl">{placing && kind === 'probe' ? 'Cancel' : 'Probe'}</span>
         </button>
         <button
           type="button"
@@ -56,12 +73,12 @@ export function Dock() {
 
       {placing && (
         <div class="hint" role="status">
-          <kbd>Click</kbd> a surface to place the speaker <kbd>Esc</kbd> cancels
+          <kbd>Click</kbd> {kind === 'probe' ? 'where you want to listen' : 'a surface to place the speaker'} <kbd>Esc</kbd> cancels
         </div>
       )}
-      {ui.openingsAreDemo.value && ui.openings.value.length > 0 && !placing && (
-        <div class="demo-note" title="Doors and windows are placed around the start point until the home's real openings are connected.">
-          Demo doors and windows
+      {ui.comparing.value && (
+        <div class="hint compare-banner" role="status">
+          Hearing: {alternative().label.toLowerCase()} <span>release to go back</span>
         </div>
       )}
     </>

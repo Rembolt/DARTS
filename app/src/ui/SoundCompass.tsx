@@ -3,8 +3,9 @@
 // back. Built from the same trace the audio uses, so what you see is what you hear.
 import { SLOT_DIRECTIONS } from '../config';
 import { PATHS_STYLE } from '../blueprint/paths';
-import { bandMean, echoRose, rosePath, toDb, viewBearing, worldBearing } from './compass';
-import { ui } from './store';
+import { bandMean, echoRose, rosePath, viewBearing, worldBearing } from './compass';
+import { heardDb, outdoorTrim, TIME_OF_DAY } from './scenario';
+import { heardOpenings, ui } from './store';
 
 const SIZE = 168;
 const C = SIZE / 2;
@@ -18,9 +19,11 @@ export function SoundCompass() {
   if (!sound || !pose) return null;
   const yaw = pose.rotation.y;
   const labels = new Map(ui.speakers.value.map(s => [s.id, s.label]));
+  const trim = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
+  const level = (id: string, strength: number) => heardDb(strength, id === 'outdoor' ? trim.db : 0);
 
   return (
-    <figure class="compass card" aria-label="Where the sound comes from">
+    <figure class="compass panel" aria-label="Where the sound comes from">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img">
         <circle cx={C} cy={C} r={OUTER} class="c-ring" />
         <circle cx={C} cy={C} r={OUTER * 0.55} class="c-ring faint" />
@@ -31,15 +34,12 @@ export function SoundCompass() {
             const r = echoRose(src.slots, SLOT_DIRECTIONS).map(v => ROSE_MIN + v * (ROSE_MAX - ROSE_MIN));
             return <path key={src.id} d={rosePath(r, C, C)} class="c-rose" style={{ fill: color(i), stroke: color(i) }} />;
           })}
-          <text x={C} y={C - OUTER - 4} class="c-north" text-anchor="middle">
-            N
-          </text>
         </g>
         {sound.sources.map((src, i) => {
           const p = sound.positions[i];
           if (!p) return null;
           const b = viewBearing(worldBearing(p[0] - sound.listener[0], p[2] - sound.listener[2]), yaw);
-          const db = toDb(bandMean(src.direct));
+          const db = level(src.id, bandMean(src.direct));
           const radius = 4 + 5 * (1 + db / 60);
           const x = C + Math.sin(b) * OUTER;
           const y = C - Math.cos(b) * OUTER;
@@ -54,19 +54,30 @@ export function SoundCompass() {
         <circle cx={C} cy={C} r={3.5} class="c-you" />
       </svg>
       <figcaption>
-        <div class="c-stat">
-          <span>Echo</span>
-          <b>{sound.echoTime[1].toFixed(1)} s</b>
-        </div>
+        <div class="c-head">You hear</div>
         {sound.sources.map((src, i) => (
           <div class="c-src" key={src.id}>
             <i style={{ background: color(i) }} />
             <span>{labels.get(src.id) ?? src.id}</span>
             <em>
-              {Math.round(toDb(bandMean(src.direct)))} dB{src.walls > 0 ? ` · ${src.walls} wall${src.walls > 1 ? 's' : ''}` : ''}
+              {Math.round(level(src.id, bandMean(src.direct)))} dB{src.walls > 0 ? ` · ${src.walls} wall${src.walls > 1 ? 's' : ''}` : ''}
             </em>
           </div>
         ))}
+        <div class="segmented" role="radiogroup" aria-label="Traffic">
+          {TIME_OF_DAY.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={ui.timeOfDay.value === t.id}
+              class={ui.timeOfDay.value === t.id ? 'on' : ''}
+              onClick={() => (ui.timeOfDay.value = t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </figcaption>
     </figure>
   );

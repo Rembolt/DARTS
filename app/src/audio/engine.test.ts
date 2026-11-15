@@ -16,6 +16,7 @@ class Param {
 class Node {
   out: Node[] = [];
   connect<T extends Node>(n: T): T { this.out.push(n); return n; }
+  disconnect() { this.out = []; }
 }
 class Source extends Node {
   buffer: unknown = null; loop = false; started = false; stopped = false;
@@ -87,8 +88,24 @@ describe('createAudioEngine (fake AudioContext)', () => {
     expect(made.panners).toHaveLength(26);
     expect(made.delays).toHaveLength(24);
     expect(made.delays.every((d) => d.max === AUDIO.maxDelay)).toBe(true);
-    expect(made.filters).toHaveLength(52);
+    expect(made.filters).toHaveLength(54); // 2 voices × (13 pairs of shelves + 1 trim shelf)
     expect(made.filters.slice(0, 4).map((f) => f.type)).toEqual(['lowshelf', 'highshelf', 'lowshelf', 'highshelf']);
+  });
+
+  it('puts a trim stage between each player and everything it feeds, neutral until set', async () => {
+    const { engine, made } = await setup();
+    for (const src of made.sources) {
+      expect(src.out).toHaveLength(1);
+      const shelf = src.out[0] as any;
+      expect(shelf.type).toBe('highshelf');
+      const trim = shelf.out[0] as any;
+      expect(trim.gain.value).toBe(1);
+      expect(trim.out.length).toBe(1 + 12 + 1); // direct shelves, 12 echo delays, reverb send
+    }
+    engine.setSourceTrim('outdoor', -6, -8);
+    const outdoorTrim = (made.sources[1].out[0] as any).out[0];
+    expect(outdoorTrim.gain.value).toBeCloseTo(dbToGain(-6));
+    expect((made.sources[1].out[0] as any).gain.value).toBe(-8);
   });
 
   it('fades the song as 1/D when the listener walks away; the highway stays 12 dB down', async () => {

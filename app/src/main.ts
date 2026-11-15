@@ -11,7 +11,8 @@ import { formatSimReady, startSim, type SimClient } from './sim/client';
 import { ReverbScheduler } from './sim/reverb-cache';
 import type { FromWorker, Vec3 } from './sim/types';
 import { mountUi } from './ui/mount';
-import { commands, ui, addSpeaker, setOpenings, setSpeakers, type Speaker } from './ui/store';
+import { addProbe, commands, ui, addSpeaker, setOpenings, setSpeakers, type Speaker } from './ui/store';
+import { createFieldClient, installFeatures } from './ui/features';
 import { localAgent } from './ui/localAgent';
 import { mockOpenings } from './ui/mock';
 import { listenForPlacement } from './ui/placement';
@@ -68,6 +69,9 @@ let reverb: Reverb | null = null;
 let traceId = 0;
 const traces = new TraceScheduler();
 const rooms = new ReverbScheduler();
+let meshData: { positions: Float32Array; indices: Uint32Array; materials: Uint8Array } | null = null;
+const field = createFieldClient((msg, transfer = []) => sim?.worker.postMessage(msg, transfer));
+const features = installFeatures({ field, mesh: () => meshData, sources: () => sources, audio: () => audio });
 let estimateRoom: string | null | undefined; // room whose reverb estimate is applied; undefined: none yet
 let debugLog = false; // dev: log every reverb swap and trace with a timestamp (window.__audio.log(true))
 
@@ -118,6 +122,7 @@ function placeSources(start: Vec3): void {
 }
 
 function onWorkerMessage(msg: FromWorker): void {
+  if (field.onMessage(msg)) return;
   switch (msg.type) {
     case 'trace': {
       audio?.applySimResult(msg.sources);
@@ -193,6 +198,7 @@ commands.toggleAudio = () => {
       audio = engine;
       reverb = new Reverb(engine.context);
       engine.connectReverb(reverb.input);
+      features.onAudio(engine);
       reverb.output.connect(engine.master);
       estimateRoom = undefined;
       const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
@@ -248,6 +254,8 @@ async function startSimulation(modelId: string): Promise<void> {
     ui.sim.value = formatSimReady(ready);
     blueprint.setLines(ready.lines);
     occlusion = createOcclusion(ready.mesh, hidden => (ui.hidden.value = hidden));
+    meshData = ready.mesh;
+    if (listener) features.onListener(listener);
     blueprint.setMesh(ready.mesh);
     checkSight();
     blueprintLines = ready.lines;
@@ -309,12 +317,14 @@ async function start(): Promise<void> {
     }
     audio?.setListenerPose(pose);
     traceListener();
+    features.onListener(listener);
   });
 
   sdk.Room.current.subscribe(current => {
     const id = firstRoomId(current);
     if (!id || id === roomId) return; // between rooms or outside: keep the last room
     roomId = id;
+    features.setRoom(id);
     enterRoom();
   });
 
@@ -337,11 +347,28 @@ async function start(): Promise<void> {
   const placeKey = (event: KeyboardEvent) => {
     const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
     if (event.key.toLowerCase() === 's' && !event.repeat && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      ui.placeKind.value = 'speaker';
+      ui.placing.value = !ui.placing.value;
+    } else if (event.key.toLowerCase() === 'l' && !event.repeat && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      ui.placeKind.value = 'probe';
       ui.placing.value = !ui.placing.value;
     } else if (event.key === 'Escape') ui.placing.value = false;
   };
   document.addEventListener('keydown', placeKey);
   iframe.contentWindow?.addEventListener('keydown', placeKey);
+  features.listenForCompare(window);
+  if (iframe.contentWindow) features.listenForCompare(iframe.contentWindow);
+  // Room names for the room card, from the tour's own room list (labels may be empty).
+  try {
+    const roomData = (sdk as unknown as { Room: { data?: { subscribe(o: { onCollectionUpdated(c: Record<string, { label?: string }>): void }): unknown } } }).Room.data;
+    roomData?.subscribe({
+      onCollectionUpdated(c) {
+        features.setRoomLabels(new Map(Object.entries(c).map(([id, r]) => [id, (r.label ?? '').trim()])));
+      },
+    });
+  } catch (err) {
+    console.warn('room labels unavailable', err);
+  }
   if (iframe.contentWindow) {
     listenForPlacement(
       iframe.contentWindow,
@@ -350,7 +377,11 @@ async function start(): Promise<void> {
         if (!pointed) return;
         // 0.3 m off the surface along its facing direction, so the speaker never sits inside the wall (v2 5.4).
         const n = pointedNormal;
-        addSpeaker([pointed[0] + n[0] * 0.3, pointed[1] + n[1] * 0.3, pointed[2] + n[2] * 0.3]);
+        if (ui.placeKind.value === 'probe') {
+          // A probe listens at ear height: on a floor, 1.2 m up; on a wall, a little in front of it.
+          const up = n[1] > 0.7;
+          addProbe(up ? [pointed[0], pointed[1] + 1.2, pointed[2]] : [pointed[0] + n[0] * 0.3, pointed[1] + n[1] * 0.3, pointed[2] + n[2] * 0.3]);
+        } else addSpeaker([pointed[0] + n[0] * 0.3, pointed[1] + n[1] * 0.3, pointed[2] + n[2] * 0.3]);
         ui.placing.value = false;
       },
     );

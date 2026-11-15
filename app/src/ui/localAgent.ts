@@ -1,7 +1,16 @@
 // A local stand-in for Jev that shows the whole flow the real agent will use: visible steps, then a suggestion the
 // user applies or dismisses. Replace by pointing `commands.ask` at the relay (v2-design.md 6); the UI does not change.
 import { interpret } from './assistant';
-import { commands, setOpeningOpen, ui, type AgentSession } from './store';
+import { bandMean } from './compass';
+import { heardDb, outdoorTrim } from './scenario';
+import { commands, setOpeningOpen, ui, type AgentSession, type Opening } from './store';
+
+/** Street noise at the listener, dB below outside, for a given set of openings. Null before the first trace. */
+function streetDb(openings: Opening[]): number | null {
+  const outdoor = ui.sound.value?.sources.find(s => s.id === 'outdoor');
+  if (!outdoor) return null;
+  return Math.round(heardDb(bandMean(outdoor.direct), outdoorTrim(openings, ui.timeOfDay.value).db));
+}
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -17,16 +26,26 @@ export async function localAgent(text: string, session: AgentSession): Promise<v
     const find = session.step(`Finding the ${intent.open ? 'closed' : 'open'} ones`);
     await wait(350);
     find.done(`${targets.length} match`);
-    const est = session.step('Estimating the effect on sound');
-    await wait(600);
-    est.done('estimate, not measured');
+    const est = session.step('Estimating street noise before and after');
+    await wait(500);
+    const ids = new Set(intent.ids);
+    const before = streetDb(openings);
+    const after = streetDb(openings.map(o => (ids.has(o.id) ? { ...o, open: intent.open } : o)));
+    est.done(before !== null && after !== null ? `${before} → ${after} dB` : 'no trace yet');
     const verb = intent.open ? 'Open' : 'Close';
-    session.say(`${intent.reply} Check the highlighted spots, then apply or dismiss.`);
+    const names = targets.map(o => o.label.toLowerCase());
+    const delta = before !== null && after !== null ? after - before : null;
+    session.say(
+      delta === null
+        ? `${verb} the ${names.join(' and ')}. Hold to hear it first.`
+        : `${verb} the ${names.join(' and ')}: street noise goes from ${before} to ${after} dB here, ${delta < 0 ? 'mostly the treble' : 'mostly the treble coming back'}. Hold to hear it first.`,
+    );
     session.propose({
-      title: `${verb} ${targets.length} ${targets.length > 1 ? 'openings' : 'opening'}`,
-      detail: intent.open ? 'More of the outside should come in.' : 'The outside should drop away indoors.',
+      title: `${verb} ${targets.length > 1 ? `${targets.length} windows` : names[0]}`,
+      detail: delta === null ? 'Estimate.' : `${delta > 0 ? '+' : ''}${delta} dB street noise at this spot (estimate).`,
       changes: targets.map(o => o.label),
       previewIds: targets.map(o => o.id),
+      previewOpen: intent.open,
       apply: () => setOpeningOpen(intent.ids, intent.open),
     });
     return;

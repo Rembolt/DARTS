@@ -3,8 +3,13 @@ import { Toaster } from 'sonner';
 import { Chat } from './Chat';
 import { Dock } from './Dock';
 import { Hotspots } from './Hotspots';
+import { Minimap } from './Minimap';
+import { RoomCard } from './RoomCard';
 import { SoundCompass } from './SoundCompass';
+import { StartScreen, startedBefore } from './StartScreen';
 import { ui } from './store';
+
+ui.started.value = startedBefore();
 
 export function App() {
   useEffect(() => {
@@ -21,9 +26,14 @@ export function App() {
   return (
     <>
       <Hotspots />
+      <aside class="left-rail">
+        <Minimap />
+        <RoomCard />
+      </aside>
       <SoundCompass />
       <Dock />
       <Chat />
+      <StartScreen />
       <Toaster
         position="top-center"
         offset={96}

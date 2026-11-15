@@ -1,13 +1,38 @@
 // The agent, as a bar at the bottom. It grows upward to show the conversation, the steps the agent took, and any
 // change it suggests, which only happens when the user applies it.
-import { ArrowUp, Check, ChevronDown, Loader2, Mic, MicOff, X } from 'lucide-preact';
+import { ArrowUp, Check, ChevronDown, ChevronRight, Headphones, Loader2, Mic, MicOff, X } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Orb, stateLabel } from './Orb';
+import { bandMean } from './compass';
+import { heardDb, outdoorTrim } from './scenario';
 import { agentState, commands, createSession, pushChat, resolveProposal, ui, type ChatMessage } from './store';
 
-const SUGGESTIONS = ['Close all the windows', 'Add a speaker', 'Open the kitchen door'];
+/** One suggestion from the numbers, or nothing. Never a generic list. */
+function contextHint(): { text: string; ask: string } | null {
+  const sound = ui.sound.value;
+  const outdoor = sound?.sources.find(s => s.id === 'outdoor');
+  if (!outdoor) return null;
+  const db = Math.round(heardDb(bandMean(outdoor.direct), outdoorTrim(ui.openings.value, ui.timeOfDay.value).db));
+  const open = ui.openings.value.filter(o => o.type === 'window' && o.open).length;
+  if (db > -20 && open > 0) return { text: `Street noise ${db} dB here, ${open} window${open > 1 ? 's' : ''} open. Close ${open > 1 ? 'them' : 'it'}?`, ask: 'Close all the windows' };
+  return null;
+}
 
 function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['steps'] }) {
+  const [open, setOpen] = useState(false);
+  const running = steps.find(st => st.status === 'run');
+  if (running && !open)
+    return (
+      <p class="process-line">
+        <Loader2 size={13} class="spin" /> {running.label}
+      </p>
+    );
+  if (!open)
+    return (
+      <button type="button" class="process-line done" onClick={() => setOpen(true)} aria-expanded="false">
+        <Check size={13} strokeWidth={3} /> Checked {steps.length} things <ChevronRight size={13} />
+      </button>
+    );
   return (
     <ol class="process" aria-label="What Jev did">
       {steps.map(st => (
@@ -24,7 +49,7 @@ function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['
 function Proposal({ m }: { m: Extract<ChatMessage, { kind: 'proposal' }> }) {
   return (
     <div class={`proposal is-${m.status}`}>
-      <p class="p-kicker">Suggestion</p>
+      <p class="p-kicker">Jev suggests</p>
       <h4>{m.title}</h4>
       <p class="p-detail">{m.detail}</p>
       <ul>
@@ -37,7 +62,19 @@ function Proposal({ m }: { m: Extract<ChatMessage, { kind: 'proposal' }> }) {
           <button type="button" class="btn primary" onClick={() => resolveProposal(m.id, true)}>
             <Check size={14} strokeWidth={2.6} /> Apply
           </button>
-          <button type="button" class="btn" onClick={() => resolveProposal(m.id, false)}>
+          {m.previewOpen !== undefined && (
+            <button
+              type="button"
+              class={`btn ${ui.comparing.value ? 'held' : ''}`}
+              title="Hold to hear it before applying (or hold A)"
+              onPointerDown={() => (ui.comparing.value = true)}
+              onPointerUp={() => (ui.comparing.value = false)}
+              onPointerLeave={() => (ui.comparing.value = false)}
+            >
+              <Headphones size={14} /> Hold to hear
+            </button>
+          )}
+          <button type="button" class="btn quiet" onClick={() => resolveProposal(m.id, false)}>
             Dismiss
           </button>
         </div>
@@ -54,6 +91,22 @@ export function Chat() {
   const messages = ui.chat.value;
   const open = ui.chatOpen.value && messages.length > 0;
   const state = agentState();
+
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // "/" puts the cursor in the agent, from anywhere but a text field.
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+      if (e.key === '/' && !typing) {
+        e.preventDefault();
+        input.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+  const [focused, setFocused] = useState(false);
+  const hint = contextHint();
 
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight, behavior: 'smooth' });
@@ -84,7 +137,7 @@ export function Chat() {
   }
 
   return (
-    <section class={`chat ${open ? 'is-open' : ''}`} aria-label="Ask Jev">
+    <section class={`chat ${open || focused || text ? 'is-open' : ''}`} aria-label="Ask Jev">
       {open && (
         <div class="card chat-log" ref={log} role="log" aria-live="polite">
           <button type="button" class="icon-btn collapse" aria-label="Hide conversation" onClick={() => (ui.chatOpen.value = false)}>
@@ -103,14 +156,10 @@ export function Chat() {
           )}
         </div>
       )}
-      {!open && messages.length === 0 && state === 'idle' && (
-        <div class="chips">
-          {SUGGESTIONS.map(s => (
-            <button type="button" class="chip" onClick={() => void send(s)}>
-              {s}
-            </button>
-          ))}
-        </div>
+      {!open && hint && state === 'idle' && (
+        <button type="button" class="hint-line" onClick={() => void send(hint.ask)}>
+          {hint.text}
+        </button>
       )}
       <form
         class={`card composer is-${state}`}
@@ -122,11 +171,14 @@ export function Chat() {
         <Orb />
         {state === 'idle' ? (
           <input
+            ref={input}
             value={text}
-            placeholder="Ask Jev about this home, or tell it what to change"
+            placeholder="Ask Jev"
+            onBlur={() => setFocused(false)}
             aria-label="Message Jev"
             onInput={e => setText((e.currentTarget as HTMLInputElement).value)}
             onFocus={() => {
+              setFocused(true);
               ui.chatOpen.value = true;
               ui.selection.value = null;
             }}
@@ -136,6 +188,7 @@ export function Chat() {
             {stateLabel()}
           </p>
         )}
+        {state === 'idle' && !focused && !text && <kbd class="slash">/</kbd>}
         <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk to Jev'} title="Voice (coming soon)" onClick={toggleVoice}>
           {ui.listening.value ? <MicOff size={16} /> : <Mic size={16} />}
         </button>

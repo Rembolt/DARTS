@@ -6,7 +6,9 @@ import { DoorIcon, WindowIcon } from './icons';
 import { Inspector } from './Inspector';
 import { layoutPins, type PinInput } from './pins';
 import { project, useCamera } from './project';
-import { previewedIds, toggleOpening, ui } from './store';
+import { heardOpenings, previewedIds, removeProbe, toggleOpening, ui } from './store';
+import { PATHS_STYLE } from '../blueprint/paths';
+import { outdoorTrim } from './scenario';
 
 export function Hotspots() {
   const pose = ui.pose.value;
@@ -17,11 +19,12 @@ export function Hotspots() {
   const placing = ui.placing.value;
   const previewed = previewedIds();
   const hidden = ui.hidden.value;
-  const openings = new Map(ui.openings.value.map(o => [o.id, o]));
+  const shownOpenings = heardOpenings(); // while A is held, the pins show the alternative you hear
+  const openings = new Map(shownOpenings.map(o => [o.id, o]));
   const speakers = new Map(ui.speakers.value.map(s => [s.id, s]));
 
   const inputs: PinInput[] = [
-    ...ui.openings.value.map(o => ({ id: o.id, kind: 'opening' as const, screen: project(o.position, size, 24), hidden: hidden.get(o.id) })),
+    ...shownOpenings.map(o => ({ id: o.id, kind: 'opening' as const, screen: project(o.position, size, 24), hidden: hidden.get(o.id) })),
     ...ui.speakers.value.map(s => ({ id: s.id, kind: 'speaker' as const, screen: project(s.position, size, 24), hidden: hidden.get(s.id) })),
   ];
   // A previewed opening (the agent suggests changing it) stays visible even behind a wall, so the user can check it.
@@ -95,6 +98,29 @@ export function Hotspots() {
                 </Tooltip.Portal>
               )}
             </Tooltip.Root>
+          );
+        })}
+        {ui.probes.value.map(p => {
+          const s = project(p.position, size, 20);
+          if (!s.visible) return null;
+          const names = new Map(ui.speakers.value.map((sp, i) => [sp.id, { label: sp.label, color: PATHS_STYLE.sourceColors[i % PATHS_STYLE.sourceColors.length] }]));
+          return (
+            <div key={p.id} class={`probe ${s.x > size.w - 420 ? 'flip' : ''}`} style={{ transform: `translate(${s.x}px, ${s.y}px)` }}>
+              <button type="button" class="probe-dot" aria-label="Remove probe" title="Remove probe" onClick={() => removeProbe(p.id)} />
+              <div class="probe-card">
+                {p.readings === null ? (
+                  <span class="fine">Measuring…</span>
+                ) : (
+                  p.readings.map(r => (
+                    <div key={r.sourceId} class="probe-row">
+                      <i style={{ background: names.get(r.sourceId)?.color }} />
+                      <span>{names.get(r.sourceId)?.label ?? r.sourceId}</span>
+                      <b>{Math.round(r.db + (r.sourceId === 'outdoor' ? outdoorTrim(shownOpenings, ui.timeOfDay.value).db : 0))}</b>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           );
         })}
         <Inspector anchor={selection?.kind === 'speaker' ? pins.find(p => p.id === selection.id) ?? null : null} />

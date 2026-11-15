@@ -29,7 +29,9 @@ export type SimConfig = {
 export type ToWorker =
   | { type: 'load'; obj: ArrayBuffer; config: SimConfig }
   | { type: 'trace'; id: number; listener: Vec3; sources: { id: string; position: Vec3 }[] }
-  | { type: 'reverb'; roomId: string; listener: Vec3 };
+  | { type: 'reverb'; roomId: string; listener: Vec3 }
+  /** Direct sound only, one ray per point: for the heat map and listening probes. Cheap: thousands of points per call. */
+  | { type: 'field'; id: number; source: Vec3; points: Float32Array };
 
 export type FromWorker =
   | {
@@ -54,6 +56,8 @@ export type FromWorker =
       pathSource: Uint8Array; // which source each segment belongs to
     }
   | { type: 'reverb'; roomId: string; echoTime: Bands; ms: number }
+  /** Per point, in the request's order: strength left after walls (3 bands, 0..1) and walls crossed. */
+  | { type: 'field'; id: number; direct: Float32Array; walls: Uint8Array; ms: number }
   | { type: 'error'; message: string };
 
 export type SourceResult = {
