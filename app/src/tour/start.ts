@@ -123,6 +123,7 @@ export function startTour(modelId: string): void {
   let reverb: Reverb | null = null;
   let footsteps: Footsteps | null = null;
   let stepsOn = true;
+  let floor: 'hard' | 'soft' = 'hard'; // from the property's status (carpet in the listing: soft)
   let traceId = 0;
   const traces = new TraceScheduler();
   const rooms = new ReverbScheduler();
@@ -273,6 +274,7 @@ export function startTour(modelId: string): void {
     if (audio !== engine) { made?.dispose(); return; }
     footsteps = made;
     footsteps?.setEnabled(stepsOn);
+    footsteps?.setFloor(floor);
     showSteps(!made);
   }
 
@@ -407,6 +409,7 @@ export function startTour(modelId: string): void {
         return;
       }
       name = property.name;
+      floor = property.floor;
     } catch (err) {
       fail(reasonOf(err, 'matterport_unreachable'));
       return;

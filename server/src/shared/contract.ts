@@ -116,7 +116,7 @@ export type QuickSummary =
       rooms: RoomSummary[]; skippedRooms: number; assumptions: string[] };
 
 export type PropertyStatus = {
-  modelId: string; name: string | null; canEnter: boolean; canSummarise: boolean; reason: NotPossible | null;
+  modelId: string; name: string | null; floor: 'hard' | 'soft'; canEnter: boolean; canSummarise: boolean; reason: NotPossible | null;
 };
 export type Health = { bundle: boolean; sdkKey: boolean; matterport: boolean; vexcel: boolean; claude: boolean; index: boolean };
 

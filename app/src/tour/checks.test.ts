@@ -8,7 +8,7 @@ import { FRONT_URL } from '../route';
 const json = (status: number, body: unknown) => async () =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const status = (over: object) => ({ modelId: 'Ki9YdfpNKum', name: '9117 Richland Dr', canEnter: true, canSummarise: true, reason: null, ...over });
+const status = (over: object) => ({ modelId: 'Ki9YdfpNKum', name: '9117 Richland Dr', floor: 'hard', canEnter: true, canSummarise: true, reason: null, ...over });
 
 describe('browserSupport', () => {
   it('names the missing browser feature', () => {

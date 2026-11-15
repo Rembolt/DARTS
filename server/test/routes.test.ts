@@ -42,7 +42,7 @@ function fakes() {
   };
   const surroundings: Surroundings = { get: async () => AREA };
   const quick: Quick = {
-    status: async modelId => ({ modelId, name: 'Home', canEnter: true, canSummarise: true, reason: null }),
+    status: async modelId => ({ modelId, name: 'Home', floor: 'hard' as const, canEnter: true, canSummarise: true, reason: null }),
     summarise: async (modelId, requirements) => {
       calls.summarise.push([modelId, requirements]);
       return { ok: false, modelId, address: null, reason: notPossible('no_room_data') };
@@ -81,7 +81,7 @@ describe('apiRouter', () => {
   it('answers status and surroundings for an allowed id', async () => {
     const { app } = fakes();
     const status = await request(app).get(`/api/property/${DEMO_MODEL_ID}/status`);
-    expect(status.body).toEqual({ modelId: DEMO_MODEL_ID, name: 'Home', canEnter: true, canSummarise: true, reason: null });
+    expect(status.body).toEqual({ modelId: DEMO_MODEL_ID, name: 'Home', floor: 'hard', canEnter: true, canSummarise: true, reason: null });
     const area = await request(app).get(`/api/surroundings/${DEMO_MODEL_ID}`);
     expect(area.body).toEqual(AREA);
   });
