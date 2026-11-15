@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="112 112 288 288" width="288" height="288" role="img" aria-label="DARTS">
+  <title>DARTS</title>
+  <!-- The mark alone on a transparent background, cropped to the D. Same geometry as darts-logo.svg. -->
+  <defs>
+    <clipPath id="darts-room">
+      <path d="M152 152 H256 A104 104 0 0 1 256 360 H152 Z"/>
+    </clipPath>
+  </defs>
+  <path fill="#261d14" fill-rule="evenodd"
+        d="M112 112 H256 A144 144 0 0 1 256 400 H112 Z
+           M152 152 V360 H256 A104 104 0 0 0 256 152 Z"/>
+  <g clip-path="url(#darts-room)">
+    <path d="M192 319 L360 256 L192 193" fill="none" stroke="#d9462a" stroke-width="20" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="8"/>
+  </g>
+  <circle cx="192" cy="193" r="20" fill="#d9462a"/>
+</svg>

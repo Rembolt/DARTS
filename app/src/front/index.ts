@@ -4,7 +4,7 @@ import { CITY_VIEWS, DEMO_MODEL_ID, NOT_POSSIBLE, type AgentEvent, type City, ty
 import { getJson, type NotPossibleError } from '../api';
 import { tourUrl } from '../route';
 import { rankCards, renderCard } from './card';
-import { ArrowUp, Check, ChevronLeft, ChevronRight, Headphones, Loader2, MapPin, Mic, MicOff, Square, AudioLines, Volume2, VolumeX, icon } from './icons';
+import { ArrowUp, Check, ChevronLeft, ChevronRight, Loader2, MapPin, Mic, MicOff, Square, AudioLines, Volume2, VolumeX, icon } from './icons';
 import { createCityMap, type Pin } from './map';
 import { askAgent } from './stream';
 import { createRecorder } from '../voice/whisper';
@@ -63,9 +63,14 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   root.classList.add('fd');
 
   // The name of the page sits in a corner: the first view is just the one line to type into.
-  const heading = el('h1', undefined, 'Hear a place before you visit it');
+  // The logo and one line that says what this is for.
+  const heading = el('h1', undefined, 'Hear a Home Before You Rent or Buy It');
   const brand = el('div', 'fd-brand');
-  brand.append(icon(Headphones, 16), heading);
+  const mark = document.createElement('img');
+  mark.className = 'fd-mark';
+  mark.src = '/darts-mark.svg';
+  mark.alt = 'DARTS';
+  brand.append(mark, heading);
 
   const map = createCityMap({
     onCity: city => apply({ type: 'city', city }),
