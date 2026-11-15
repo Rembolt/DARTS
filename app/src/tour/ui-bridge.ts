@@ -20,6 +20,8 @@ import { materialById, toConfigMessage } from '../ui/materials';
 import { mountUi } from '../ui/mount';
 import { createOcclusion, type Occlusion } from '../ui/occlusion';
 import { startedBefore } from '../ui/StartScreen';
+import { startConversation, type Conversation } from '../voice/converse';
+import { ackAfter, stopSpeaking, warmAcks } from '../voice/speak';
 import { addProbe, addSpeaker, commands, createSession, pushChat, SOUND_LIBRARY, ui, type Opening, type Speaker } from '../ui/store';
 import { createPlacement } from './placement';
 
@@ -40,7 +42,8 @@ export type BridgeDeps = {
   cycleBlueprintMode: () => void;
   toggleAudio: () => void;
   toggleFootsteps?: () => void;
-  moveToPoint?: (point: Vec3) => Promise<void>;
+  /** Fly to the capture point nearest `point`, preferring one where `inside(x, z)` is true. Resolves to where it landed, or null. */
+  moveToPoint?: (point: Vec3, inside?: (x: number, z: number) => boolean) => Promise<Vec3 | null>;
   retrace: () => void;
   clearReverb: () => void;
   /** Optional target window for pointer placement (the Matterport iframe window). */
@@ -233,7 +236,13 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     async moveUserTo(roomId) {
       const room = piGeometry?.rooms.find(r => r.id === roomId);
       const centre = room ? toRoomInfo(room).centre : null;
-      if (centre && deps.moveToPoint) await deps.moveToPoint(centre);
+      if (!room || !centre || !deps.moveToPoint) throw new Error('cannot move');
+      const within = (r: typeof room, x: number, z: number) => pointInPolygon(x, z, r.polygon.map(([px, py]) => [px, -py] as [number, number]));
+      const landed = await deps.moveToPoint(centre, (x, z) => within(room, x, z));
+      if (!landed) throw new Error('no viewpoint');
+      // Say where we really are: a small room may have no capture point, and the nearest one can be next door.
+      const here = (piGeometry?.rooms ?? []).find(r => Math.abs(r.floorZ + 1.5 - landed[1]) < 1.5 && within(r, landed[0], landed[2]));
+      return { arrivedIn: here?.name ?? room.name, exact: !here || here.id === room.id };
     },
     measure(at) {
       const srcs = deps.getSources() ?? [];
@@ -295,7 +304,8 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       step.done();
       session.say(res.reply);
     } catch (err) {
-      step.fail(err instanceof Error ? err.message : 'failed');
+      console.error('[jev] step failed:', err);
+      step.fail('could not finish');
       throw err;
     }
   };
@@ -308,12 +318,34 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     ui.chatOpen.value = true;
     ui.thinking.value = true;
     const session = createSession();
+    // Talking with Jev: a small "mm" if the answer is slow, the way a person would not leave a silence.
+    runStopped = false;
+    const cancelFiller = ui.converse.value ? ackAfter('jev', text, 150, on => (ui.speaking.value = on)) : () => {};
+    cancelAck = cancelFiller;
+    const sessionSay = session.say;
+    // A request the user stopped still reports "Stopped" on screen, but never out loud.
+    session.say = (t, o) => (cancelFiller(), sessionSay(t, { ...o, silent: o?.silent || runStopped }));
     void commands
       .ask(text, session)
-      .catch(err => session.say(`That failed: ${err instanceof Error ? err.message : 'unknown error'}`))
+      .catch(err => {
+        console.error('[jev] request failed:', err);
+        session.say("Sorry, I couldn't do that.");
+      })
       .finally(() => {
+        cancelFiller();
         ui.thinking.value = false;
       });
+  };
+  let runStopped = false;
+  let cancelAck: () => void = () => {};
+  // Stopping Jev stops everything it is doing: the request, a pending "of course", and any speech already playing.
+  const stopRequest = commands.stop;
+  commands.stop = () => {
+    runStopped = true;
+    cancelAck();
+    stopRequest();
+    stopSpeaking();
+    ui.speaking.value = false;
   };
   commands.voice = on => {
     if (!recorder.available) {
@@ -345,6 +377,49 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
         ui.chatOpen.value = true;
       });
   };
+
+  // Hands-free conversation: the mic stays open, each sentence goes to Jev, and Jev answers aloud.
+  let conversation: Conversation | null = null;
+  commands.converse = on => {
+    conversation?.stop();
+    conversation = null;
+    ui.listening.value = false;
+    ui.micMuted.value = false;
+    if (!on) {
+      ui.converse.value = false;
+      commands.stop(); // ending the conversation ends the speech and the request in progress
+      return;
+    }
+    stopSpeaking();
+    warmAcks('jev');
+    ui.converse.value = true;
+    ui.chatOpen.value = true;
+    startConversation({
+      onText: ask_,
+      onUserSpeaking: speaking => (ui.listening.value = speaking),
+      onTranscribing: () => {}, // the agent's own thinking state takes over as soon as the sentence is sent
+      agentBusy: () => ui.thinking.value || ui.speaking.value,
+      onBargeIn: () => commands.stop(),
+    }).then(
+      c => {
+        if (ui.converse.value) (conversation = c).setMuted(ui.micMuted.value);
+        else c.stop();
+      },
+      () => {
+        ui.converse.value = false;
+        pushChat('jev', 'I could not use the microphone. Allow it in the browser, or type instead.');
+      },
+    );
+  };
+
+  // The mic button, while talking, mutes the mic instead of starting a second recording.
+  const stopMuteEffect = effect(() => {
+    conversation?.setMuted(ui.micMuted.value);
+  });
+  // Turn the tour's sound down while someone is talking, so the voice is heard over it.
+  const stopDuckEffect = effect(() => {
+    deps.getAudio()?.setDuck(ui.speaking.value || (ui.converse.value && ui.listening.value));
+  });
 
   // ---- Sync UI signals -> Blueprint & Worker ----
   // Redraw the doors and windows on the blueprint whenever one opens or closes (or the list arrives after the geometry).
@@ -626,6 +701,9 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       attachPlacement(win);
     },
     dispose() {
+      commands.converse(false);
+      stopMuteEffect();
+      stopDuckEffect();
       stopEchoesEffect();
       stopOpeningsEffect();
       stopHeatEffect();
@@ -637,4 +715,15 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       recorder.cancel();
     },
   };
+}
+
+/** Ray casting: is (x, z) inside the polygon? */
+function pointInPolygon(x: number, z: number, poly: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i];
+    const [xj, zj] = poly[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
 }

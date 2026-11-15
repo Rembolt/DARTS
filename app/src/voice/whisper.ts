@@ -131,3 +131,8 @@ export function createRecorder(): Recorder {
     },
   };
 }
+
+/** Transcribe one finished utterance (16 kHz mono) in the Whisper worker. */
+export function transcribeLocal(audio: Float32Array): Promise<string> {
+  return call('transcribe', audio);
+}

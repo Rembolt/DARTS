@@ -1,5 +1,5 @@
 // The agent's state as a small level meter (it is a sound product: the agent shows as audio, not as a blob).
-import { agentState } from './store';
+import { agentState, ui } from './store';
 
 export function Orb() {
   const state = agentState();
@@ -14,4 +14,4 @@ export function Orb() {
 }
 
 const LABEL = { idle: 'Ready', listening: 'Listening', thinking: 'Working', speaking: 'Replying' } as const;
-export const stateLabel = () => LABEL[agentState()];
+export const stateLabel = () => (ui.converse.value && agentState() === 'idle' ? 'Just talk, I am listening' : LABEL[agentState()]);

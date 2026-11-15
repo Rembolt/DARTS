@@ -15,6 +15,7 @@ import { apiRouter } from './routes.js';
 import { createSearch } from './search/index.js';
 import { DEMO_MODEL_ID } from './shared/contract.js';
 import { createSurroundings } from './surroundings/index.js';
+import { ttsEnabled, ttsRouter } from './tts/index.js';
 import { jevRouter, v2Router } from './v2/routes.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -60,10 +61,11 @@ try {
     wideRouters: [jevRouter({ env })],
     routers: [
       cityRouter({ cities, search }),
+      ttsRouter({ env, cacheDir }),
       apiRouter({ search, quick, surroundings, agent, allowedIds }),
       v2Router({ pi, lookup: id => search.lookup(id), allowedIds, env, cacheDir }),
     ],
-    health: () => ({ index: search.ready() }),
+    health: () => ({ index: search.ready(), tts: ttsEnabled(env) }),
     pageDir,
   });
   await listen(app, port, host);

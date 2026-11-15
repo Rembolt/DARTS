@@ -454,3 +454,11 @@ button.process-line:hover { color: var(--ink-2); }
   .inspector { width: min(268px, calc(100vw - 24px)); }
   .tut-card { max-width: calc(100vw - 24px); }
 }
+
+/* Voice conversation: the talk button pulses while you speak, and a ring shows it is listening. */
+.mic.talk.on, .fd-talk.on { background: var(--sound); color: var(--sound-ink); }
+.fd-talk.hearing, .mic.talk.hearing { box-shadow: 0 0 0 3px color-mix(in srgb, var(--sound) 35%, transparent); }
+
+.tut-count { display: flex; align-items: center; justify-content: space-between; }
+.tut-voice { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer; }
+.tut-voice:hover { background: var(--raised); color: var(--ink); }

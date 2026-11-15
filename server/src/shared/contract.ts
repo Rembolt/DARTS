@@ -118,7 +118,7 @@ export type QuickSummary =
 export type PropertyStatus = {
   modelId: string; name: string | null; floor: 'hard' | 'soft'; canEnter: boolean; canSummarise: boolean; reason: NotPossible | null;
 };
-export type Health = { bundle: boolean; sdkKey: boolean; matterport: boolean; vexcel: boolean; claude: boolean; index: boolean };
+export type Health = { bundle: boolean; sdkKey: boolean; matterport: boolean; vexcel: boolean; claude: boolean; index: boolean; tts?: boolean };
 
 export type AgentRequest = { conversationId?: string; text: string; tour?: { modelId: string } };
 export type AgentEvent =
