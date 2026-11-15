@@ -74,7 +74,7 @@ export function fakes(options: {
   const quick: Quick = {
     async status(modelId) {
       calls.status.push(modelId);
-      return { modelId, name: null, canEnter: true, canSummarise: true, reason: null, ...options.statuses?.[modelId] };
+      return { modelId, name: null, floor: 'hard' as const, canEnter: true, canSummarise: true, reason: null, ...options.statuses?.[modelId] };
     },
     async summarise(modelId, requirements) {
       calls.summarise.push({ modelId, requirements });

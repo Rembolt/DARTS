@@ -1,12 +1,13 @@
-import { notPossible, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
-import { checkBundle, loadMesh, loadServerConfig, UNREACHABLE, type ServerConfig } from '../api';
+import { notPossible, type AreaSummary, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
+import { checkBundle, getJson, loadMesh, loadServerConfig, UNREACHABLE, type ServerConfig } from '../api';
 import { createModeSwitch } from '../blueprint/mode';
 import { bindShortcut, createToggle } from '../blueprint/toggle';
 import { createBlueprint } from '../blueprint/view';
-import { createAudioEngine, type AudioEngine } from '../audio/engine';
-import { defaultSourcePositions } from '../audio/positions';
+import { createAudioEngine, type AudioEngine, type SourceSpec } from '../audio/engine';
+import { surroundingSources, surroundingsNotice } from '../audio/surroundings';
+import { createFootsteps, type Footsteps } from '../audio/footsteps';
 import { Reverb } from '../audio/reverb';
-import { BLUEPRINT, simConfig } from '../config';
+import { BLUEPRINT, MAX_SOURCES, simConfig } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
@@ -74,6 +75,7 @@ export function startTour(modelId: string): void {
   const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
   const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
   const uiRoot = document.getElementById('ui-root')!;
+  const stepsButton = document.getElementById('footsteps-toggle') as HTMLButtonElement;
 
   const blueprint = createBlueprint(canvas);
   canvas.addEventListener('webglcontextlost', () => fail(CONTEXT_LOST));
@@ -119,11 +121,16 @@ export function startTour(modelId: string): void {
 
   let sim: SimClient | null = null; // set once the worker has the mesh
   let viewerReady = false;
-  let sources: { id: string; position: Vec3 }[] | null = null; // placed from the tour's first inside position
+  let sourceSpecs: SourceSpec[] = []; // what plays: the surroundings, once the first inside position is known
+  let sources: { id: string; position: Vec3 }[] | null = null; // the traced ones (enabled, not stereo); null until placed
+  let placed = false;
   let listener: Vec3 | null = null; // last position inside the house
   let roomId: string | null = null; // last room from Room.current
   let audio: AudioEngine | null = null;
   let reverb: Reverb | null = null;
+  let footsteps: Footsteps | null = null;
+  let stepsOn = true;
+  let floor: 'hard' | 'soft' = 'hard'; // from the property's status (carpet in the listing: soft)
   let traceId = 0;
   const traces = new TraceScheduler();
   const rooms = new ReverbScheduler();
@@ -142,6 +149,9 @@ export function startTour(modelId: string): void {
     setSources: next => {
       sources = next;
       traces.invalidate();
+    },
+    setSourceSpecs: next => {
+      sourceSpecs = next;
     },
     getListener: () => listener,
     getRoomId: () => roomId,
@@ -170,6 +180,8 @@ export function startTour(modelId: string): void {
     sim = null;
     reverb?.dispose();
     reverb = null;
+    footsteps?.dispose();
+    footsteps = null;
     const old = audio;
     audio = null;
     if (old) void old.stop();
@@ -195,7 +207,7 @@ export function startTour(modelId: string): void {
   }
 
   function sendTrace(position: Vec3 | null): void {
-    if (!position || !sim || !sources) return;
+    if (!position || !sim || !sources?.length) return;
     sim.worker.postMessage({ type: 'trace', id: ++traceId, listener: position, sources });
   }
 
@@ -215,17 +227,41 @@ export function startTour(modelId: string): void {
     sendReverb(d.request);
   }
 
-  function placeSources(start: Vec3): void {
-    const pos = defaultSourcePositions(start);
-    sources = [
-      { id: 'indoor', position: pos.indoor },
-      { id: 'outdoor', position: pos.outdoor },
-    ];
-    audio?.setSourcePosition('indoor', pos.indoor);
-    audio?.setSourcePosition('outdoor', pos.outdoor);
-    uiBridge.onSourcesInitialized(sources);
-    console.info('sources', pos);
+  /** The sources that play now. Traced ones (not stereo) go to the worker; all go to the audio engine. */
+  function applySourceSpecs(specs: SourceSpec[]): void {
+    sourceSpecs = specs;
+    sources = specs.filter(sp => sp.enabled && sp.kind !== 'stereo').slice(0, MAX_SOURCES).map(({ id, position }) => ({ id, position }));
+    void pushSources();
+    uiBridge.onSourcesInitialized(specs);
     traces.invalidate();
+    traceListener();
+  }
+
+  async function pushSources(): Promise<void> {
+    if (!audio) return;
+    const engine = audio;
+    await engine.setSources(sourceSpecs);
+    if (audio !== engine) return;
+    if (engine.skipped.length) notices.set('skipped', `Not playing (file missing): ${engine.skipped.join(', ')}`);
+    else notices.delete('skipped');
+    showStatus();
+  }
+
+  /** Once the first inside position is known: place the outside sounds from the property's surroundings (v3-design 6). */
+  async function placeSources(start: Vec3, modelId: string): Promise<void> {
+    applySourceSpecs([]);
+    try {
+      const area = await getJson<AreaSummary>(`/api/surroundings/${modelId}`);
+      if (failed) return;
+      const notice = surroundingsNotice(area);
+      if (notice) notices.set('surroundings', notice);
+      applySourceSpecs(surroundingSources(area, start));
+      audio?.setStereoCut(-25, 800);
+    } catch (err) {
+      console.warn('surroundings:', err instanceof Error ? err.message : err);
+      notices.set('surroundings', 'Surroundings not available: outside sounds are off');
+    }
+    showStatus();
   }
 
   function onWorkerMessage(msg: FromWorker): void {
@@ -276,6 +312,30 @@ export function startTour(modelId: string): void {
     ui.audio.value = state;
   }
 
+  function showSteps(missing = false): void {
+    stepsButton.disabled = !footsteps;
+    stepsButton.setAttribute('aria-pressed', String(stepsOn && !!footsteps));
+    stepsButton.title = footsteps ? 'Footsteps on sweep changes (F)' : missing ? 'Footstep sounds are missing' : 'Start audio first';
+  }
+
+  async function startFootsteps(engine: AudioEngine): Promise<void> {
+    const made = await createFootsteps(engine.context, { master: engine.master, reverbInput: engine.reverbInput });
+    if (audio !== engine) { made?.dispose(); return; }
+    footsteps = made;
+    footsteps?.setEnabled(stepsOn);
+    footsteps?.setFloor(floor);
+    showSteps(!made);
+  }
+
+  function flipSteps(): void {
+    if (!footsteps) return;
+    stepsOn = !stepsOn;
+    footsteps.setEnabled(stepsOn);
+    showSteps();
+  }
+  stepsButton.addEventListener('click', flipSteps);
+  showSteps();
+
   // The click handler itself creates the AudioContext, so the browser lets it play.
   audioButton.addEventListener('click', () => {
     if (audio) {
@@ -283,6 +343,9 @@ export function startTour(modelId: string): void {
       audio = null;
       reverb?.dispose();
       reverb = null;
+      footsteps?.dispose();
+      footsteps = null;
+      showSteps();
       showAudio('off');
       void old.stop();
       return;
@@ -298,16 +361,18 @@ export function startTour(modelId: string): void {
         reverb = new Reverb(engine.context);
         engine.connectReverb(reverb.input);
         reverb.output.connect(engine.master);
+        void startFootsteps(engine);
         estimateRoom = undefined;
         const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
         if (known) setEchoTime(known, 'cached room');
-        if (sources) for (const s of sources) engine.setSourcePosition(s.id as 'indoor' | 'outdoor', s.position);
+        engine.setStereoCut(-25, 800);
+        void pushSources();
         if (latestPose && isInside(latestPose.mode)) engine.setListenerPose(latestPose);
         traces.invalidate(); // a fresh trace sets every level at once
         traceListener();
         showAudio('on');
         uiBridge.onAudioStarted(engine);
-        console.info('audio started', { standIns: engine.standIns });
+        console.info('audio started');
       })
       .catch(err => {
         // Spec 4.4: an audio context that won't start means this browser can't run 3D audio.
@@ -395,6 +460,7 @@ export function startTour(modelId: string): void {
         return;
       }
       name = property.name;
+      floor = property.floor;
     } catch (err) {
       fail(reasonOf(err, 'matterport_unreachable'));
       return;
@@ -448,7 +514,10 @@ export function startTour(modelId: string): void {
       // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
       if (!inside) return;
       listener = [pose.position.x, pose.position.y, pose.position.z];
-      if (!sources) placeSources(listener);
+      if (!placed) {
+        placed = true;
+        void placeSources(listener, modelId);
+      }
       audio?.setListenerPose(pose);
       traceListener();
     });
@@ -473,6 +542,22 @@ export function startTour(modelId: string): void {
       if (event.key.toLowerCase() !== 'p' || event.repeat || typing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (pointed) console.info('point', JSON.stringify(pointed.map(v => +v.toFixed(3))));
     };
+    const stepKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+      if (event.key.toLowerCase() !== 'f' || event.repeat || typing || event.ctrlKey || event.metaKey || event.altKey) return;
+      flipSteps();
+    };
+    document.addEventListener('keydown', stepKey);
+    iframe.contentWindow?.addEventListener('keydown', stepKey);
+    // A step sound for each jump to a new sweep, not for the first pose and not outside the house (v3-design 6.5).
+    let lastSweep: string | undefined;
+    sdk.Sweep.current.subscribe(sweep => {
+      const id = sweep.sid ?? sweep.id;
+      const first = lastSweep === undefined;
+      const changed = id !== lastSweep;
+      lastSweep = id;
+      if (!first && changed && latestPose && isInside(latestPose.mode)) footsteps?.walk(1.0);
+    });
     document.addEventListener('keydown', logPoint);
     iframe.contentWindow?.addEventListener('keydown', logPoint);
 

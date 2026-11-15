@@ -29,6 +29,9 @@ describe('readRequest', () => {
     expect(readRequest('a lab in Boston').otherCity).toBe(true);
     expect(readRequest('quiet home in Downtown LA')).toMatchObject({ city: 'Los Angeles', otherCity: false });
     expect(readRequest('a house in Houston Heights').otherCity).toBe(false);
+    expect(readRequest('quiet home in Montrose')).toMatchObject({ city: 'Houston', otherCity: false });
+    expect(readRequest('a studio in Silver Lake')).toMatchObject({ city: 'Los Angeles', otherCity: false });
+    expect(readRequest('a loft in River Oaks Houston')).toMatchObject({ city: 'Houston', otherCity: false });
     expect(readRequest('a flat place').city).toBeNull();
     expect(readRequest('a flat place').otherCity).toBe(false);
   });

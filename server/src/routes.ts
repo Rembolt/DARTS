@@ -67,10 +67,20 @@ export function apiRouter(deps: {
     const controller = new AbortController();
     // The response's close event fires when the client goes away; after a normal end it no longer matters.
     res.on('close', () => controller.abort());
-    res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
-    res.flushHeaders();
+    // The stream opens with the first event, so a refusal that comes first (`busy`) can still be a real 429 (spec 8.2).
+    let opened = false;
     const emit = (event: AgentEvent) => {
-      if (!controller.signal.aborted && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (controller.signal.aborted || res.writableEnded) return;
+      if (!opened) {
+        opened = true;
+        if (event.type === 'notPossible' && event.reason.code === 'busy') {
+          sendNotPossible(res, event.reason);
+          return;
+        }
+        res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+        res.flushHeaders();
+      }
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
     await agent.run(body as AgentRequest, emit, controller.signal);
     if (!res.writableEnded) res.end();

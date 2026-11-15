@@ -17,15 +17,19 @@ Solid mode (default) draws the mesh as a white model with its edges, X-ray draws
 The page UI is an overlay in `app/src/ui/`, built to the rules in [app/src/ui/DESIGN.md](app/src/ui/DESIGN.md): Preact + signals,
 Radix popover/select/switch/tooltip and Sonner toasts through `preact/compat` (aliased in `vite.config.ts`), lucide icons,
 Hanken Grotesk, a bone / espresso / vermilion / moss palette. State is `ui/store.ts`; `commands` there are the seams to the
-app (`ask` for the agent, `voice` for speech). Pins hide behind walls via a line-of-sight worker (`ui/occlusion.ts`,
+app (`ask` for Jev via `/api/jev`, `voice` for speech). Pins hide behind walls via a line-of-sight worker (`ui/occlusion.ts`,
 `ui/pins.ts`). Sound is shown as one flowing line per source that thins at each wall (`blueprint/sonar.ts`, wall positions
 from the worker's `walls` message), a heat-painted floor, a minimap, a room card, and a compass. Settings
 (`ui/materials.ts`, `ui/Settings.tsx`) change materials, furnishing and quality live through the worker's `config` message.
 Keyboard shortcuts go through `ui/keys.ts` (capture phase on the page and the tour window: the tour's canvas swallows
-bubbling key events). Doors and windows are demo data (`ui/mock.ts`), the chat is a local stand-in (`ui/localAgent.ts`),
-and speakers beyond the two MVP sources are preview only until the audio engine takes a source list. Radix Slider does not
-work under preact/compat (no thumb): use the native range input.
-Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
+bubbling key events). Radix Slider does not work under preact/compat (no thumb): use the native range input.
+V3 is built (front door, agent, quick audio summary, surroundings sounds, footsteps, not-possible screens): the front
+door is `/`, a property's tour is `/?m=<modelId>`.
+First time: `npm run fetch-bundle`, then `npm run build-index` (needs `costar-kit/data/`, unzipped with `COSTAR_ZIP_PASSWORD`),
+then `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
+Outside sounds need these files in `app/public/audio/` (CC0 or public domain, listed in its `CREDITS.md`): `residential_ambience`,
+`city_ambience`, `commercial_ambience`, `industrial_ambience`, `nature_ambience`, `road`, `train`, `plane` (`.ogg`). A missing one is
+skipped and named in the tour's status line; nothing is synthesized in its place.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it, except where
 [docs/project/v3-design.md](docs/project/v3-design.md) replaces it: the single model id and the two hardcoded sources.
@@ -40,6 +44,9 @@ and its section 4 for every hardcoded value. It supersedes anything in older doc
   - **Blueprint view:** our own three.js canvas over the viewer, showing the mesh as lines and the traced sound paths.
 - **`server/`** (Node + Express, exists since step 1): serves the self-hosted Matterport Bundle and the SDK key, on
   `127.0.0.1` only. Later steps add the mesh download proxy, which keeps the GraphQL token off the browser.
+  V3 added: the mesh proxy and cache, the search index over the CoStar lists (`server/src/search/`), the quick audio summary
+  from Property Intelligence (`quick/`), surroundings from Vexcel (`surroundings/`) and the front-door agent that streams
+  cards over SSE (`agent/`, key `CLAUDE_API`). The shared types are `server/src/shared/contract.ts`.
 - **The contract between the parts** is `app/src/sim/types.ts` (design section 5.7). It exists; change it there first.
 - **Nothing heavy may run inside the Matterport viewer.** It is already slow. Rays go in the worker, audio on the audio thread.
 
@@ -50,6 +57,8 @@ and its section 4 for every hardcoded value. It supersedes anything in older doc
 - **Install:** `npm install` at the repo root (npm workspaces: `app/` and `server/`).
 - **Viewer files:** `npm run fetch-bundle` downloads the Matterport Bundle into `server/bundle/` (git-ignored). Run once after cloning.
 - **Run:** `npm run dev` starts the server on `http://localhost:8787` and the page on `http://localhost:5173`. Set `PORT` to move the server.
+- **Index:** `npm run build-index` builds `server/cache/index.json` from `costar-kit/data/` (once, about 2 s).
+- **Warm:** `npm run warm -- "<query>"` runs a demo query and caches each result's mesh and surroundings. Run it before a demo.
 - **Test:** `npm test` runs both. One workspace: `npm run test -w app`. One file: `npm run test -w app -- src/config.test.ts`. One test: add `-t "name of the test"`.
 - **Types:** `npm run typecheck`.
 
@@ -126,7 +135,7 @@ More results, including timings, are in [docs/project/acoustic-experience.md](do
 | [docs/vexcel/](docs/vexcel/) | Vexcel API 2.0 docs: endpoint reference, OpenAPI spec, hackathon tutorial PDF | Aerial imagery, parcels, structures, elevation |
 | [docs/hackathon/](docs/hackathon/) | HackPrinceton packets (schedule, judging, rules, prizes) and the CoStar Discord announcement | Logistics, rules, submission requirements |
 | [scripts/](scripts/) | Runnable code: `vexcel_quickstart.py` (Vexcel end-to-end sample) | Starting with Vexcel |
-| `.env` | Secrets: `MATTERPORT_API_KEY`, `MATTERPORT_API_TOKEN`, `MATTERPORT_SDK_KEY`, `VEXCEL_API_KEY`, `COSTAR_ZIP_PASSWORD` | Never print, log or commit the values |
+| `.env` | Secrets: `MATTERPORT_API_KEY`, `MATTERPORT_API_TOKEN`, `MATTERPORT_SDK_KEY`, `VEXCEL_API_KEY`, `CLAUDE_API`, `COSTAR_ZIP_PASSWORD` | Never print, log or commit the values |
 
 ## Common tasks → where to look
 

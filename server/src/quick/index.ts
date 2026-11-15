@@ -65,7 +65,9 @@ export function createQuick(options: {
 
   async function check(modelId: string): Promise<Check> {
     const server = serverReason();
-    const kind = lookup(modelId)?.kind ?? 'home';   // height only, which never changes whether a room counts
+    const row = lookup(modelId);
+    const kind = row?.kind ?? 'home';   // height only, which never changes whether a room counts
+    const floor: 'hard' | 'soft' = row?.facts.includes('carpet') ? 'soft' : 'hard'; // the tour's footsteps
     let model: PiModel;
     try {
       model = await pi.get(modelId);
@@ -73,7 +75,7 @@ export function createQuick(options: {
       const reason = toNotPossible(err);
       if (reason.code === 'model_not_found') availability.set(modelId, { canEnter: false, canSummarise: false });
       return {
-        status: { modelId, name: null, canEnter: false, canSummarise: false, reason: server ?? reason },
+        status: { modelId, name: null, floor, canEnter: false, canSummarise: false, reason: server ?? reason },
         summaryReason: reason, model: null, rooms: [], skipped: 0,
       };
     }
@@ -90,7 +92,7 @@ export function createQuick(options: {
 
     return {
       status: {
-        modelId, name: model.name, canEnter: canEnter && !server, canSummarise, reason: server ?? modelReason,
+        modelId, name: model.name, floor, canEnter: canEnter && !server, canSummarise, reason: server ?? modelReason,
       },
       summaryReason: !exists ? modelReason : canSummarise ? null : notPossible('no_room_data'),
       model, rooms, skipped,
@@ -145,7 +147,7 @@ export function createQuick(options: {
       try {
         return (await check(modelId)).status;
       } catch (err) {
-        return { modelId, name: null, canEnter: false, canSummarise: false, reason: toNotPossible(err) };
+        return { modelId, name: null, floor: 'hard', canEnter: false, canSummarise: false, reason: toNotPossible(err) };
       }
     },
     summarise,

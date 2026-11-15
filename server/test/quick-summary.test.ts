@@ -185,7 +185,7 @@ describe('createQuick summarise', () => {
 
   it('flags an interior room and still estimates its outside noise', async () => {
     const rooms = [
-      room('hall', 'Hallway', { area: 4, width: 2, depth: 2, height: 2.5, edges: box(2, 2, 4, 4) }),
+      room('hall', 'Bathroom', { area: 4, width: 2, depth: 2, height: 2.5, edges: box(2, 2, 4, 4) }),
       room('n', 'Bedroom', { height: 2.5, edges: box(0, 4.1, 6, 6) }),
       room('s', 'Bedroom', { height: 2.5, edges: box(0, 0, 6, 1.9) }),
       room('w', 'Closet', { area: 4, height: 2.5, edges: box(0, 2, 1.9, 4) }),
@@ -223,7 +223,7 @@ describe('createQuick summarise', () => {
 describe('createQuick status', () => {
   it('reports bundle_missing first, and still knows the summary works', async () => {
     const { quick, cacheDir } = setup({ bundle: false });
-    expect(await quick.status(ID)).toEqual({ modelId: ID, name: '9117 Richland Dr', canEnter: false, canSummarise: true, reason: notPossible('bundle_missing') });
+    expect(await quick.status(ID)).toEqual({ modelId: ID, name: '9117 Richland Dr', floor: 'hard', canEnter: false, canSummarise: true, reason: notPossible('bundle_missing') });
     expect((await quick.summarise(ID, quick.resolve('general'))).ok).toBe(true);
     // The server's own state is never recorded against the model.
     expect(createAvailability(cacheDir).get(ID)).toEqual({ canEnter: true, canSummarise: true });
@@ -235,7 +235,12 @@ describe('createQuick status', () => {
   });
 
   it('answers a good house with no reason', async () => {
-    expect(await setup().quick.status(ID)).toEqual({ modelId: ID, name: '9117 Richland Dr', canEnter: true, canSummarise: true, reason: null });
+    expect(await setup().quick.status(ID)).toEqual({ modelId: ID, name: '9117 Richland Dr', floor: 'hard', canEnter: true, canSummarise: true, reason: null });
+  });
+
+  it('reports a soft floor when the row lists carpet', async () => {
+    expect((await setup({ row: { ...ROW, facts: ['carpet'] } }).quick.status(ID)).floor).toBe('soft');
+    expect((await setup({ row: null }).quick.status(ID)).floor).toBe('hard');
   });
 
   it('works without an index row', async () => {

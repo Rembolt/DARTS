@@ -1,7 +1,7 @@
 // Footsteps (v3-design.md 6.5): one step every 0.5 s while the listener moves between sweeps, played dry and
 // through the room's reverb send. Files only: a set that does not load is unavailable, never synthesized.
 import { dbToGain } from './levels';
-import { fetchBuffer } from './sounds';
+import { loadSound } from './sounds';
 
 const STEP_SECONDS = 0.5;
 const MIN_STEPS = 2;
@@ -45,7 +45,7 @@ export async function createFootsteps(
 
   const load = async (kind: 'hard' | 'soft') => {
     const files = Array.from({ length: VARIATIONS }, (_, i) => `/audio/footstep_${kind}_${i + 1}.ogg`);
-    const buffers = await Promise.all(files.map((url) => fetchBuffer(ctx, url, fetchFn)));
+    const buffers = await Promise.all(files.map((url) => loadSound(ctx, url, fetchFn)));
     return buffers.filter((b): b is AudioBuffer => b !== null);
   };
   const [hard, soft] = await Promise.all([load('hard'), load('soft')]);

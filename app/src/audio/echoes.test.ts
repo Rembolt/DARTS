@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { clearDirectGain, echoGain, gainStartTime, planDelayChange, slotPannerPosition } from './echoes';
+import { clearDirectGain, echoGain, gainStartTime, MERGED_DIRECTIONS, mergeSlots, planDelayChange, SLOT_MERGE, slotPannerPosition } from './echoes';
 import { dbToGain } from './levels';
-import { AUDIO } from '../config';
+import { AUDIO, SLOT_DIRECTIONS } from '../config';
 
 describe('slotPannerPosition', () => {
   it('sits slotPannerDistance m from the listener along the fixed world direction', () => {
@@ -11,10 +11,11 @@ describe('slotPannerPosition', () => {
 });
 
 describe('echo gains (mvp-design.md 6)', () => {
-  it('uses the unobstructed direct gain: 1/max(D,1) indoors, the level outdoors', () => {
-    expect(clearDirectGain('indoor', 4)).toBe(0.25);
-    expect(clearDirectGain('indoor', 0.3)).toBe(1);
-    expect(clearDirectGain('outdoor', 100)).toBeCloseTo(dbToGain(-12));
+  it('uses the unobstructed direct gain: 1/max(D,1) for a point source, the level for an ambient one', () => {
+    expect(clearDirectGain('point', 0, 4)).toBe(0.25);
+    expect(clearDirectGain('point', 0, 0.3)).toBe(1);
+    expect(clearDirectGain('point', -6, 4)).toBeCloseTo(0.25 * dbToGain(-6));
+    expect(clearDirectGain('ambient', -12, 100)).toBeCloseTo(dbToGain(-12));
   });
 
   it('is sqrt(slot energy mid) × that gain, and 0 for an empty slot', () => {
@@ -66,5 +67,32 @@ describe('gainStartTime', () => {
     expect(gainStartTime(5, 0)).toBe(5);
     expect(gainStartTime(5, 5.03)).toBe(5.03);
     expect(gainStartTime(5.1, 5.03)).toBe(5.1);
+  });
+});
+
+describe('merging 12 echo slots into 8 (v2-design 5.2)', () => {
+  it('maps every slot to its nearest of 8 unit directions', () => {
+    expect(MERGED_DIRECTIONS).toHaveLength(8);
+    for (const d of MERGED_DIRECTIONS) expect(Math.hypot(...d)).toBeCloseTo(1, 9);
+    expect(SLOT_MERGE).toHaveLength(12);
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    SLOT_DIRECTIONS.forEach((dir, i) => {
+      const best = Math.max(...MERGED_DIRECTIONS.map(m => dot(dir, m)));
+      expect(dot(dir, MERGED_DIRECTIONS[SLOT_MERGE[i]])).toBeCloseTo(best, 9);
+    });
+  });
+
+  it('sums the energy and keeps the delay of the strongest slot', () => {
+    const slots = Array.from({ length: 12 }, () => ({ energy: [0, 0, 0] as [number, number, number], delay: 0 }));
+    const target = SLOT_MERGE[0];
+    const partner = SLOT_MERGE.findIndex((m, i) => i > 0 && m === target);
+    slots[0] = { energy: [0.01, 0.02, 0.03], delay: 0.01 };
+    if (partner > 0) slots[partner] = { energy: [0.1, 0.05, 0.01], delay: 0.03 };
+    const merged = mergeSlots(slots);
+    expect(merged).toHaveLength(8);
+    const total = merged.reduce((sum, s) => sum + s.energy[1], 0);
+    expect(total).toBeCloseTo(partner > 0 ? 0.07 : 0.02);
+    expect(merged[target].delay).toBe(partner > 0 ? 0.03 : 0.01);
+    expect(merged.filter((_, i) => i !== target).every(s => s.energy[1] === 0)).toBe(true);
   });
 });

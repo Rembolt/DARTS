@@ -2,9 +2,10 @@
 // Property Intelligence openings (`/api/openings/:id`), material defaults (`/api/defaults/:id`), and Jev (`/api/jev`).
 import { effect } from '@preact/signals';
 import type { GeometryAnswer } from '../../../server/src/v2/geometry';
-import type { AudioEngine } from '../audio/engine';
+import type { AudioEngine, SourceSpec } from '../audio/engine';
 import { PATHS_STYLE } from '../blueprint/paths';
 import type { Blueprint } from '../blueprint/view';
+import { SOUNDS, type SoundId } from '../config';
 import { ask } from '../jev/loop';
 import { browserRecognition, pushToTalk } from '../jev/voice';
 import { createActions, type Measurement, type OpeningInfo, type RoomInfo, type SceneEffects } from '../scene/actions';
@@ -29,6 +30,7 @@ export type BridgeDeps = {
   getAudio: () => AudioEngine | null;
   getSources: () => { id: string; position: Vec3 }[] | null;
   setSources: (next: { id: string; position: Vec3 }[]) => void;
+  setSourceSpecs?: (next: SourceSpec[]) => void;
   getListener: () => Vec3 | null;
   getRoomId: () => string | null;
   getEchoTime: () => Bands | null;
@@ -48,7 +50,7 @@ export type TourUiBridge = {
   onPose(pose: Pose, inside: boolean): void;
   onRoom(roomId: string): void;
   onAudioStarted(engine: AudioEngine): void;
-  onSourcesInitialized(sources: { id: string; position: Vec3 }[]): void;
+  onSourcesInitialized(specs: SourceSpec[]): void;
   setPointerTarget(win: Window): void;
   dispose(): void;
 };
@@ -121,7 +123,22 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     deps.retrace();
   };
 
+  const toSoundId = (id: string): SoundId => (id in SOUNDS ? (id as SoundId) : 'music');
+
+  const toAudioSpecs = (list: SceneState['sources']): SourceSpec[] =>
+    list.map(s => ({
+      id: s.id,
+      label: s.label,
+      kind: s.kind,
+      sound: toSoundId(s.sound),
+      position: s.position,
+      levelDb: s.levelDb,
+      enabled: s.enabled,
+      ...(s.every ? { every: s.every } : {}),
+    }));
+
   const syncSpeakersToScene = (list: Speaker[]) => {
+    const prevById = new Map(sceneStore.get().sources.map(s => [s.id, s]));
     const nextSources = list.map(s => ({
       id: s.id,
       label: s.label,
@@ -130,16 +147,14 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       position: s.position,
       levelDb: s.levelDb,
       enabled: s.enabled,
+      ...(prevById.get(s.id)?.every ? { every: prevById.get(s.id)!.every } : {}),
     }));
     sceneStore.set({ ...sceneStore.get(), sources: nextSources }, ['sources']);
-    const active = list.filter(s => s.enabled).map(s => ({ id: s.id, position: s.position }));
+    const active = list.filter(s => s.enabled && s.kind !== 'stereo').map(s => ({ id: s.id, position: s.position }));
     deps.setSources(active);
-    const engine = deps.getAudio();
-    if (engine) {
-      for (const s of list) {
-        if (s.id === 'indoor' || s.id === 'outdoor') engine.setSourcePosition(s.id, s.position);
-      }
-    }
+    const audioSpecs = toAudioSpecs(nextSources);
+    deps.setSourceSpecs?.(audioSpecs);
+    void deps.getAudio()?.setSources(audioSpecs);
     deps.retrace();
   };
 
@@ -176,8 +191,11 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
         levelDb: s.levelDb,
         enabled: s.enabled,
       }));
-      const active = scene.sources.filter(s => s.enabled).map(s => ({ id: s.id, position: s.position }));
+      const active = scene.sources.filter(s => s.enabled && s.kind !== 'stereo').map(s => ({ id: s.id, position: s.position }));
       deps.setSources(active);
+      const audioSpecs = toAudioSpecs(scene.sources);
+      deps.setSourceSpecs?.(audioSpecs);
+      await deps.getAudio()?.setSources(audioSpecs);
       deps.retrace();
     },
     clearReverb: deps.clearReverb,
@@ -476,18 +494,27 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     onAudioStarted(engine) {
       features.onAudio(engine);
     },
-    onSourcesInitialized(srcs) {
-      if (ui.speakers.value.length === 0) {
-        ui.speakers.value = srcs.map(s => ({
-          id: s.id,
-          label: s.id === 'outdoor' ? 'Street outside' : 'Living room music',
-          sound: s.id === 'outdoor' ? 'traffic' : 'music',
-          kind: s.id === 'outdoor' ? 'ambient' : 'point',
-          position: s.position,
-          levelDb: 0,
-          enabled: true,
-        }));
-      }
+    onSourcesInitialized(specs) {
+      const nextSceneSources = specs.map(s => ({
+        id: s.id,
+        label: s.label,
+        kind: s.kind,
+        sound: s.sound,
+        position: s.position,
+        levelDb: s.levelDb,
+        enabled: s.enabled,
+        ...(s.every ? { every: s.every } : {}),
+      }));
+      sceneStore.set({ ...sceneStore.get(), sources: nextSceneSources }, ['sources']);
+      ui.speakers.value = specs.map(s => ({
+        id: s.id,
+        label: s.label,
+        sound: s.sound,
+        kind: s.kind,
+        position: s.position,
+        levelDb: s.levelDb,
+        enabled: s.enabled,
+      }));
     },
     setPointerTarget(win) {
       attachPlacement(win);

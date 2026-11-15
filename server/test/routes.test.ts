@@ -42,7 +42,7 @@ function fakes() {
   };
   const surroundings: Surroundings = { get: async () => AREA };
   const quick: Quick = {
-    status: async modelId => ({ modelId, name: 'Home', canEnter: true, canSummarise: true, reason: null }),
+    status: async modelId => ({ modelId, name: 'Home', floor: 'hard' as const, canEnter: true, canSummarise: true, reason: null }),
     summarise: async (modelId, requirements) => {
       calls.summarise.push([modelId, requirements]);
       return { ok: false, modelId, address: null, reason: notPossible('no_room_data') };
@@ -62,7 +62,7 @@ function fakes() {
   };
   const allowedIds = new Set([DEMO_MODEL_ID, 'aaaaaaaaaaa']);
   const app = createApp({}, { allowedIds, routers: [apiRouter({ search, quick, surroundings, agent, allowedIds })] });
-  return { app, calls };
+  return { app, calls, agent };
 }
 
 describe('apiRouter', () => {
@@ -81,7 +81,7 @@ describe('apiRouter', () => {
   it('answers status and surroundings for an allowed id', async () => {
     const { app } = fakes();
     const status = await request(app).get(`/api/property/${DEMO_MODEL_ID}/status`);
-    expect(status.body).toEqual({ modelId: DEMO_MODEL_ID, name: 'Home', canEnter: true, canSummarise: true, reason: null });
+    expect(status.body).toEqual({ modelId: DEMO_MODEL_ID, name: 'Home', floor: 'hard', canEnter: true, canSummarise: true, reason: null });
     const area = await request(app).get(`/api/surroundings/${DEMO_MODEL_ID}`);
     expect(area.body).toEqual(AREA);
   });
@@ -99,6 +99,14 @@ describe('apiRouter', () => {
     expect(res.headers['content-type']).toMatch(/text\/event-stream/);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.text).toBe('data: {"type":"status","text":"a"}\n\ndata: {"type":"text","text":"b"}\n\ndata: {"type":"done"}\n\n');
+  });
+
+  it('answers a first-event busy with a real 429', async () => {
+    const { app, agent } = fakes();
+    agent.run = async (_request, emit) => { emit({ type: 'notPossible', reason: notPossible('busy') }); };
+    const res = await request(app).post('/api/agent').send({ text: 'hi' });
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ code: 'busy', retry: true });
   });
 
   it('rejects empty and over-long text before streaming', async () => {

@@ -29,6 +29,15 @@ describe('usableRooms', () => {
     expect(skipped).toBe(3);
   });
 
+  it('leaves out balconies, halls and entrances, unless nothing else is left', () => {
+    const named = (id: string, label: string, area = 12) => room({ id, label, area });
+    const some = usableRooms(model([named('a', 'Bedroom'), named('b', 'Balcony', 20), named('c', 'Entrance Hall'), named('d', 'Hallway')]), 'home');
+    expect(some.rooms.map(r => r.id)).toEqual(['a']);
+    expect(some.skipped).toBe(3);
+    const only = usableRooms(model([named('b', 'Balcony'), named('d', 'Hallway')]), 'home');
+    expect(only.rooms).toHaveLength(2);
+  });
+
   it('assumes a height when PI gives 0 and flags it', () => {
     const home = usableRooms(model([room({ height: 0 }), room({ id: 'b', height: 2.4 })]), 'home');
     const commercial = usableRooms(model([room({ height: 0 })]), 'commercial');

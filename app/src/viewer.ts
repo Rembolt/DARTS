@@ -35,7 +35,7 @@ export type MpSdk = {
     ): { x: number; y: number; z: number };
   };
   Mode: { Mode: Record<string, string>; moveTo(mode: string): Promise<string> };
-  Sweep: { moveTo(sweepId: string, options?: { transition?: string; transitionTime?: number }): Promise<string> };
+  Sweep: { current: { subscribe(cb: (sweep: { sid?: string; id?: string }) => void): { cancel(): void } }; moveTo(sweepId: string, options?: { transition?: string; transitionTime?: number }): Promise<string> };
 };
 
 const SLOW_START_MS = 60_000;

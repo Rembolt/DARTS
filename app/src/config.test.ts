@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MATERIALS, SIM, SOURCES, AUDIO, SLOT_DIRECTIONS, simConfig } from './config';
+import { MATERIALS, SIM, SOUNDS, MAX_SOURCES, NORTH_OFFSET_DEG, AUDIO, SLOT_DIRECTIONS, simConfig } from './config';
 
 describe('materials (spec 4.2)', () => {
   it('has the spec values', () => {
@@ -42,15 +42,33 @@ describe('echo slot directions (spec 5.4)', () => {
   });
 });
 
-describe('sources and audio (spec 4.3, 6)', () => {
+describe('sound library (v2-design 5.3, v3-design 6.6)', () => {
+  it('has a file, kind and level per sound', () => {
+    for (const [id, sound] of Object.entries(SOUNDS)) expect(sound.file, id).toBe(`/audio/${id}.ogg`);
+    expect(SOUNDS.music).toEqual({ file: '/audio/music.ogg', kind: 'point', levelDb: 0 });
+    expect(SOUNDS.conversation).toMatchObject({ kind: 'point', levelDb: -6 });
+    expect(SOUNDS.highway).toMatchObject({ kind: 'ambient', levelDb: -12 });
+    expect(SOUNDS.road).toMatchObject({ kind: 'ambient' });
+    expect(SOUNDS.city_ambience).toMatchObject({ kind: 'ambient', levelDb: -14 });
+    expect(SOUNDS.nature_ambience).toMatchObject({ kind: 'ambient', levelDb: -20 });
+    expect(SOUNDS.industrial_ambience).toMatchObject({ kind: 'ambient', levelDb: -14 });
+    expect(SOUNDS.commercial_ambience).toMatchObject({ kind: 'ambient', levelDb: -16 });
+    expect(SOUNDS.train).toMatchObject({ kind: 'stereo', levelDb: -10 });
+    expect(SOUNDS.plane).toMatchObject({ kind: 'stereo', levelDb: -10 });
+    expect(SOUNDS.footstep_hard.levelDb).toBe(-18);
+    expect(MAX_SOURCES).toBe(6);
+    expect(NORTH_OFFSET_DEG).toBe(0);
+  });
+});
+
+describe('audio (spec 6)', () => {
   it('has the spec values', () => {
-    expect(SOURCES.indoor).toEqual({ id: 'indoor', file: '/audio/indoor.ogg', position: null, startHeightOffset: -0.4 });
-    expect(SOURCES.outdoor).toEqual({ id: 'outdoor', file: '/audio/outdoor.ogg', distance: 25, compassAngleDeg: 0, height: 1.5, levelDb: -12 });
     expect(AUDIO).toMatchObject({
       slotPannerDistance: 2, maxDelay: 0.2, delayJumpThreshold: 0.01, delayGlideTime: 0.25, delayDipTime: 0.02,
       reverbGain: 1.5, reverbCrossfade: 0.2, reverbChangeThreshold: 0.15, smoothing: 0.08,
       lowShelfHz: 250, highShelfHz: 2000, echoTimeMin: 0.2, echoTimeMax: 2.5, listenerMoveThreshold: 0.25,
     });
+    expect('standInIndoorSeconds' in AUDIO).toBe(false);
   });
 });
 
