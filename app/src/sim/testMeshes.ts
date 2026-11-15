@@ -1,7 +1,7 @@
 // Tiny synthetic meshes for sim tests, built directly in viewer coordinates (Y up). Not shipped code.
 import { simConfig } from '../config';
 import { buildRayIndex } from './geometry';
-import type { SimState } from './load';
+import { createSimState, type SimState } from './load';
 import { tagMaterials } from './materials';
 import { faceNormals } from './normals';
 import type { Mesh } from './obj';
@@ -53,7 +53,7 @@ export class MeshBuilder {
     const mesh: Mesh = { positions: new Float32Array(this.positions), indices: new Uint32Array(this.indices) };
     const index = buildRayIndex(mesh);
     const normals = faceNormals(mesh);
-    return { mesh, normals, materials: tagMaterials(mesh, normals), index, config };
+    return createSimState(mesh, index, normals, tagMaterials(mesh, normals), config);
   }
 }
 

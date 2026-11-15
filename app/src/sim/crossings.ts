@@ -1,10 +1,8 @@
 // Every surface crossed along a straight segment, merged into walls (mvp-design.md 5.2 steps 2 and 3).
 import { DoubleSide, Ray } from 'three';
+import { surfaceAt } from './library';
 import type { SimState } from './load';
 import type { Bands, Vec3 } from './types';
-
-/** Material ids index this list (the key order of `SimConfig['materials']`, as in `MATERIAL_IDS`). */
-const MATERIAL_KEYS = ['wall', 'floor', 'ceiling'] as const;
 
 export type Crossing = { walls: number; transmission: Bands };
 
@@ -17,7 +15,8 @@ const ray = new Ray();
  * - Crossings are grouped into walls: a crossing joins the current wall while it is closer than `wallMergeDistance`
  *   to that wall's FIRST crossing. Measuring from the first crossing (not the previous one) keeps a run of bumpy
  *   scan triangles from chaining into one endless "wall" across a room.
- * - A wall's blocking, per band, is the largest blocking of the materials in its group (a floor slab seen as a floor
+ * - A wall's blocking, per band, is the largest blocking of the materials in its group (each triangle's material
+ *   from the library, `surfaceAt`) (a floor slab seen as a floor
  *   face plus a ceiling face blocks like the floor). Each wall multiplies by `10^(−blocking × transmissionScale / 10)`.
  * - Returns null as soon as more than `maxWalls` walls are found (the caller skips the leg). With `maxWalls` 0 it
  *   only asks for the nearest hit.
@@ -43,7 +42,7 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     triangles[i] = hits[h].faceIndex ?? -1;
   });
 
-  const { config, materials } = state;
+  const { config } = state;
   const scale = config.transmissionScale / 10;
   let walls = 0;
   let i = 0;
@@ -52,7 +51,7 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     const blocking: Bands = [0, 0, 0];
     for (; i < distances.length && distances[i] - start < config.wallMergeDistance; i++) {
       if (triangles[i] < 0) continue;
-      const db = config.materials[MATERIAL_KEYS[materials[triangles[i]]]].blockingDb;
+      const db = surfaceAt(state, triangles[i]).blockingDb;
       for (let k = 0; k < 3; k++) if (db[k] > blocking[k]) blocking[k] = db[k];
     }
     walls++;
@@ -61,5 +60,3 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   }
   return { walls, transmission };
 }
-
-export { MATERIAL_KEYS };

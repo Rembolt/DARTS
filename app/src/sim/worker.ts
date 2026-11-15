@@ -1,4 +1,5 @@
 // The simulation worker (mvp-design.md 2 and 5). Message dispatch only; the work lives in the modules it calls.
+import { applySetMaterials, applySetQuality } from './library';
 import { loadSim, type SimState } from './load';
 import { reverbJob } from './reverb-job';
 import { trace } from './trace';
@@ -11,6 +12,12 @@ function post(msg: FromWorker, transfer: Transferable[] = []): void {
   (self as unknown as Worker).postMessage(msg, transfer);
 }
 
+/** The loaded state, or an error naming the message that came too early (posted by the catch below). */
+function need(what: string): SimState {
+  if (!state) throw new Error(`${what} before load`);
+  return state;
+}
+
 self.onmessage = (event: MessageEvent<ToWorker>) => {
   const msg = event.data;
   try {
@@ -18,8 +25,8 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
       case 'load': {
         const loaded = loadSim(msg.obj, msg.config);
         state = loaded.state;
-        const { lines, mesh } = loaded.ready;
-        post(loaded.ready, [lines.buffer, mesh.positions.buffer, mesh.indices.buffer, mesh.materials.buffer]);
+        const { lines, mesh, lineLayers } = loaded.ready;
+        post(loaded.ready, [lines.buffer, mesh.positions.buffer, mesh.indices.buffer, mesh.materials.buffer, mesh.layers.buffer, lineLayers.buffer]);
         break;
       }
       case 'trace': {
@@ -41,6 +48,13 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         post(reverbJob(state, msg, lastEstimate ?? undefined));
         break;
       }
+      // V2 settings (v2-design.md 8). They change the state only; the page sends a fresh trace after each.
+      case 'setMaterials':
+        applySetMaterials(need(msg.type), msg);
+        break;
+      case 'setQuality':
+        applySetQuality(need(msg.type), msg);
+        break;
     }
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) });

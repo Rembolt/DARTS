@@ -1,7 +1,8 @@
 // Early reflections (mvp-design.md 5.3): rays from the listener, each bounce point connected to every source
 // ("diffuse rain"), with the connecting leg allowed to cut through up to `maxLegWalls` walls.
-import { crossSegment, MATERIAL_KEYS } from './crossings';
+import { crossSegment } from './crossings';
 import { firstHit } from './geometry';
+import { surfaceAt } from './library';
 import type { SimState } from './load';
 import { isDegenerate } from './normals';
 import { fibonacciSphere, type Rng } from './sampling';
@@ -32,7 +33,7 @@ export type EarlyResult = {
   hitCount: Uint8Array;
   /** Average length of the ray segments that ended on a surface, metres (0 when nothing was hit). */
   meanFreePath: number;
-  /** Average `absorption + furnishing` per band over all hits, clamped to [0, 0.999] (0 when nothing was hit). */
+  /** Average `absorption + furnishing` (each clamped to 0.99) per band over all hits (0 when nothing was hit). */
   averageAbsorption: Bands;
 };
 
@@ -91,7 +92,7 @@ export type RayTraceOptions = {
  *   Zero-area triangles use the reverse of the ray direction.
  * - A source behind the hit surface (leg cosine ≤ 0) gets no contribution from that hit: the formula's cosine
  *   would be negative.
- * - Strength per band is clamped at 0 when `absorption + furnishing` exceeds 1.
+ * - `absorption + furnishing` is clamped to 0.99 per band (`effectiveAbsorption`), so no surface absorbs everything.
  */
 export function traceRays(
   state: SimState,
@@ -100,7 +101,7 @@ export function traceRays(
   rng: Rng,
   opts: RayTraceOptions,
 ): Pick<EarlyResult, 'meanFreePath' | 'averageAbsorption'> {
-  const { config, normals, materials, index } = state;
+  const { config, normals, index } = state;
   const { rays, bounces, maxLegWalls, minStrength, onHit, onContribution } = opts;
   const c = config.speedOfSound;
   const reference = sources.map(s => {
@@ -109,8 +110,6 @@ export function traceRays(
     return d * d;
   });
   const perRay = 4 / rays;
-  const absorption = MATERIAL_KEYS.map(k => config.materials[k].absorption.map(a => a + config.furnishing) as Bands);
-  const scattering = MATERIAL_KEYS.map(k => Math.max(config.materials[k].scattering, config.scatteringFloor));
 
   let segmentSum = 0, segments = 0;
   const absorptionSum: Bands = [0, 0, 0];
@@ -145,8 +144,8 @@ export function traceRays(
         n[0] = normals[3 * t]; n[1] = normals[3 * t + 1]; n[2] = normals[3 * t + 2];
         if (n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] > 0) { n[0] = -n[0]; n[1] = -n[1]; n[2] = -n[2]; }
       }
-      const m = materials[t];
-      const a = absorption[m];
+      const surface = surfaceAt(state, t);
+      const a = surface.absorption;
       for (let k = 0; k < 3; k++) {
         absorptionSum[k] += a[k];
         strength[k] *= Math.max(0, 1 - a[k]);
@@ -181,7 +180,7 @@ export function traceRays(
       }
 
       // Bounce: diffuse (cosine-weighted around the facing) or mirror.
-      if (rng() < scattering[m]) {
+      if (rng() < surface.scattering) {
         cosineHemisphere(n, rng, dir);
       } else {
         const d2 = 2 * (dir[0] * n[0] + dir[1] * n[1] + dir[2] * n[2]);
