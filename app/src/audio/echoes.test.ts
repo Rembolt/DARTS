@@ -33,7 +33,7 @@ describe('planDelayChange', () => {
     });
   });
 
-  it('dips a jump over 2 ms: gain to 0 over 20 ms, set the delay, gain back over 20 ms', () => {
+  it('dips a jump over 10 ms: gain to 0 over 20 ms, set the delay, gain back over 20 ms', () => {
     const plan = planDelayChange({ now: t, currentDelay: 0.01, nextDelay: 0.03, currentGain: 0.3, nextGain: 0.2 });
     const d = AUDIO.delayDipTime;
     expect(plan).toEqual({
@@ -51,7 +51,12 @@ describe('planDelayChange', () => {
     expect(planDelayChange({ now: t, currentDelay: 0, nextDelay: -0.001, currentGain: 1, nextGain: 1 })).toMatchObject({ kind: 'glide', delay: 0 });
   });
 
-  it('glides a change under the 2 ms threshold', () => {
+  it('glides the 2–10 ms changes a walk makes between traces, instead of muting the slot', () => {
+    expect(planDelayChange({ now: t, currentDelay: 0.01, nextDelay: 0.015, currentGain: 1, nextGain: 1 }).kind).toBe('glide');
+    expect(planDelayChange({ now: t, currentDelay: 0.01, nextDelay: 0.0195, currentGain: 1, nextGain: 1 }).kind).toBe('glide');
+  });
+
+  it('glides a change under the jump threshold', () => {
     expect(planDelayChange({ now: t, currentDelay: 0.01, nextDelay: 0.01 + AUDIO.delayJumpThreshold / 2, currentGain: 1, nextGain: 1 }).kind).toBe('glide');
   });
 });

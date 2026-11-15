@@ -24,6 +24,22 @@ export function listenerVectors(pose: Pick<Pose, 'position' | 'rotation'>): List
   };
 }
 
+/**
+ * Turn the Web Audio listener to the pose's orientation; its position stays at the origin (the engine places sources
+ * relative to the listener). Plain steps, not glides: a gliding listener keeps every HRTF panner in Chrome's costly
+ * sample-accurate mode, which crackled while moving. The panner crossfades its own filters, so steps don't click.
+ */
+export function applyListenerOrientation(listener: AudioListener, rotation: Pose['rotation'], time: number): void {
+  const { forward: [fx, fy, fz], up: [ux, uy, uz] } = listenerVectors({ position: { x: 0, y: 0, z: 0 }, rotation });
+  if (listener.forwardX) {
+    const set = (param: AudioParam, v: number) => param.setValueAtTime(v, time);
+    set(listener.forwardX, fx); set(listener.forwardY, fy); set(listener.forwardZ, fz);
+    set(listener.upX, ux); set(listener.upY, uy); set(listener.upZ, uz);
+  } else {
+    listener.setOrientation(fx, fy, fz, ux, uy, uz);
+  }
+}
+
 /** Set a Web Audio listener from a pose. Uses the AudioParam form, falling back to the old setters (Firefox). */
 export function applyListener(listener: AudioListener, pose: Pick<Pose, 'position' | 'rotation'>, time: number, smoothing: number): void {
   const { position: [px, py, pz], forward: [fx, fy, fz], up: [ux, uy, uz] } = listenerVectors(pose);

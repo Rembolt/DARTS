@@ -4,7 +4,7 @@
 import type { Pose } from '../viewer';
 import type { Bands, SourceResult, Vec3 } from '../sim/types';
 import { AUDIO, SLOT_DIRECTIONS, SOURCES } from '../config';
-import { applyListener } from './listener';
+import { applyListenerOrientation } from './listener';
 import { distance, indoorDirectGain, outdoorDirectGain, shelfGainsDb } from './levels';
 import { clearDirectGain, echoGain, gainStartTime, planDelayChange, slotPannerPosition } from './echoes';
 import type { SourceId } from './positions';
@@ -110,15 +110,20 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     return panner;
   }
 
-  function placePanner(p: PannerNode, [x, y, z]: Vec3, glide: boolean) {
+  // The listener sits at the origin and only turns; panners are placed relative to it. So the 24 slot panners
+  // (fixed world directions, 2 m away) never move, and only the 2 direct panners move as you walk. Steps, not glides:
+  // automated panner positions put HRTF panners in Chrome's costly sample-accurate mode, which crackled on movement.
+  function placePanner(p: PannerNode, [x, y, z]: Vec3) {
     if (p.positionX) {
-      // Slot panners glide with the same smoothing as the listener, so their direction stays fixed in the world.
-      const set = (param: AudioParam, v: number) => (glide ? smooth(param, v) : param.setValueAtTime(v, now()));
-      set(p.positionX, x); set(p.positionY, y); set(p.positionZ, z);
+      const t = now();
+      p.positionX.setValueAtTime(x, t); p.positionY.setValueAtTime(y, t); p.positionZ.setValueAtTime(z, t);
     } else {
       p.setPosition(x, y, z);
     }
   }
+
+  /** A world position seen from the listener, which the audio graph keeps at the origin. */
+  const relative = (p: Vec3): Vec3 => [p[0] - listener[0], p[1] - listener[1], p[2] - listener[2]];
 
   function makeVoice(id: SourceId, buffer: AudioBuffer): Voice {
     const source = ctx.createBufferSource();
@@ -140,7 +145,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
       const p = makePanner();
       source.connect(delay).connect(s.low);
       s.high.connect(g).connect(p);
-      placePanner(p, slotPannerPosition(listener, dir), false);
+      placePanner(p, slotPannerPosition([0, 0, 0], dir));
       return { ...s, dir, delay, gain: g, panner: p, delayValue: 0, gainValue: 0, dipEnd: 0 };
     });
 
@@ -188,7 +193,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
       smooth(g, plan.gain, gainStartTime(t, slot.dipEnd));
       setShelves(slot, energy);
     } else {
-      smooth(d, plan.delay);
+      d.setTargetAtTime(plan.delay, t, AUDIO.delayGlideTime); // slow, so the glide barely bends the pitch
       smooth(g, plan.gain, gainStartTime(t, slot.dipEnd));
       setShelves(slot, energy);
     }
@@ -211,16 +216,16 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
     setListenerPose(pose) {
       if (stopped) return;
       listener = [pose.position.x, pose.position.y, pose.position.z];
-      applyListener(ctx.listener, pose, now(), AUDIO.smoothing);
+      applyListenerOrientation(ctx.listener, pose.rotation, now());
       updateGain(voices.indoor); // only the indoor direct level depends on distance between traces
-      for (const v of Object.values(voices)) for (const s of v.slots) placePanner(s.panner, slotPannerPosition(listener, s.dir), true);
+      for (const v of Object.values(voices)) placePanner(v.panner, relative(v.position));
     },
 
     setSourcePosition(id, position) {
       if (stopped) return;
       const v = voices[id];
       v.position = [...position];
-      placePanner(v.panner, v.position, false);
+      placePanner(v.panner, relative(v.position));
       updateGain(v);
     },
 

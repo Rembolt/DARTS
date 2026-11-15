@@ -94,7 +94,7 @@ describe('createAudioEngine (fake AudioContext)', () => {
   it('fades the song as 1/D when the listener walks away; the highway stays 12 dB down', async () => {
     const { engine, indoorGain, outdoorGain, indoorPanner } = await setup();
     engine.setSourcePosition('indoor', [0, 1, 0]);
-    expect(indoorPanner.positionY.value).toBe(1);
+    expect(indoorPanner.positionY.value).toBe(1); // listener still at the origin: relative = world
     engine.setListenerPose(pose(0, 1, 4));
     expect(indoorGain.gain.value).toBeCloseTo(0.25);
     engine.setListenerPose(pose(0, 1, 0.5));
@@ -102,10 +102,15 @@ describe('createAudioEngine (fake AudioContext)', () => {
     expect(outdoorGain.gain.value).toBeCloseTo(dbToGain(-12));
   });
 
-  it('turns the listener with the pose', async () => {
-    const { engine, raw } = await setup();
+  it('turns the listener with the pose, keeps it at the origin, and steps (no glides on panner params)', async () => {
+    const { engine, raw, indoorPanner } = await setup();
+    engine.setSourcePosition('indoor', [1, 2, 0]);
     engine.setListenerPose(pose(1, 2, 3, 0, 90));
-    expect(raw.listener.positionZ.value).toBe(3);
+    for (const k of ['positionX', 'positionY', 'positionZ'] as const) expect(raw.listener[k].events).toHaveLength(0);
+    // The source is 3 m in front of the listener's world position along −Z, so it sits at (0, 0, −3) relative to it.
+    expect([indoorPanner.positionX.value, indoorPanner.positionY.value, indoorPanner.positionZ.value]).toEqual([0, 0, -3]);
+    const kinds = [raw.listener.forwardX, indoorPanner.positionZ].flatMap((p: Param) => p.events.map(e => e[0]));
+    expect(kinds.every(k => k === 'set')).toBe(true);
     expect(raw.listener.forwardX.value).toBeCloseTo(-1);
     expect(raw.listener.forwardZ.value).toBeCloseTo(0);
     expect(raw.listener.upY.value).toBeCloseTo(1);
@@ -129,14 +134,17 @@ describe('createAudioEngine (fake AudioContext)', () => {
     expect(raw.close).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the slot panners 2 m from the listener along fixed world directions', async () => {
+  it('keeps the slot panners 2 m from the listener along fixed world directions, and never moves them', async () => {
     const { engine, indoorSlotPanners } = await setup();
+    const before = indoorSlotPanners.map(p => p.positionX.events.length);
     engine.setListenerPose(pose(1, 2, 3, 20, 75));
+    engine.setListenerPose(pose(4, 2, -1, 0, 10));
     indoorSlotPanners.forEach((p, i) => {
       const d = SLOT_DIRECTIONS[i];
-      expect(p.positionX.value).toBeCloseTo(1 + 2 * d[0]);
-      expect(p.positionY.value).toBeCloseTo(2 + 2 * d[1]);
-      expect(p.positionZ.value).toBeCloseTo(3 + 2 * d[2]);
+      expect(p.positionX.value).toBeCloseTo(2 * d[0]);
+      expect(p.positionY.value).toBeCloseTo(2 * d[1]);
+      expect(p.positionZ.value).toBeCloseTo(2 * d[2]);
+      expect(p.positionX.events.length).toBe(before[i]); // no updates per pose
     });
   });
 
