@@ -18,7 +18,7 @@ import {
 export { SYSTEM_PROMPT } from './prompt.js';
 
 export type ToolOutcome = { content: string; isError: boolean; events: AgentEvent[] };
-export type ToolDeps = { search: Search; quick: Quick };
+export type ToolDeps = { search: Search; quick: Quick; emit?: (event: AgentEvent) => void };
 
 export const CITIES: readonly City[] = ['Houston', 'Los Angeles'];
 export const KINDS: readonly (PropertyKind | 'any')[] = ['home', 'apartment', 'commercial', 'any'];
@@ -127,8 +127,11 @@ export function trimSummary(summary: QuickSummary): unknown {
 
 class BadInput extends Error {}
 
-function fail(reason: NotPossible, events: AgentEvent[] = []): ToolOutcome {
-  return { content: JSON.stringify({ ok: false, code: reason.code, message: reason.message }), isError: true, events };
+type Result = { content: string; isError: boolean };
+type Push = (event: AgentEvent) => void;
+
+function fail(reason: NotPossible): Result {
+  return { content: JSON.stringify({ ok: false, code: reason.code, message: reason.message }), isError: true };
 }
 
 function bad(detail: string): never {
@@ -203,47 +206,57 @@ function readOpen(input: unknown): { modelId: string; reason: string } {
   return { modelId: modelId(v.modelId), reason: v.reason.slice(0, 200) };
 }
 
-async function searchProperties(input: unknown, deps: ToolDeps): Promise<ToolOutcome> {
+async function searchProperties(input: unknown, deps: ToolDeps, push: Push): Promise<Result> {
   const query = readSearch(input);
   const where = query.zip ? `${query.city} ${query.zip}` : query.city;
-  const events: AgentEvent[] = [{ type: 'status', text: `Searching ${KIND_WORDS[query.kind]} in ${where}…` }];
+  push({ type: 'status', text: `Searching ${KIND_WORDS[query.kind]} in ${where}…` });
   const result = deps.search.search(query, id => deps.quick.isUnusable(id));
-  if ('code' in result) return fail(result, events);
-  return { content: JSON.stringify(result), isError: false, events };
+  if ('code' in result) return fail(result);
+  return { content: JSON.stringify(result), isError: false };
 }
 
-async function quickAudioSummary(input: unknown, deps: ToolDeps): Promise<ToolOutcome> {
+async function quickAudioSummary(input: unknown, deps: ToolDeps, push: Push): Promise<Result> {
   const { modelId: id, profile, overrides } = readSummary(input);
   const row = deps.search.lookup(id);
   if (!row) return fail(notPossible('unknown_model'));
-  const events: AgentEvent[] = [{ type: 'status', text: `Checking ${row.address}…` }];
+  push({ type: 'status', text: `Checking ${row.address}…` });
   const summary = await deps.quick.summarise(id, deps.quick.resolve(profile, overrides));
-  events.push({ type: 'cards', summaries: [summary] });
-  return { content: JSON.stringify(trimSummary(summary)), isError: !summary.ok, events };
+  push({ type: 'cards', summaries: [summary] });
+  return { content: JSON.stringify(trimSummary(summary)), isError: !summary.ok };
 }
 
-async function openTour(input: unknown, deps: ToolDeps): Promise<ToolOutcome> {
+async function openTour(input: unknown, deps: ToolDeps, push: Push): Promise<Result> {
   const { modelId: id, reason } = readOpen(input);
   if (!deps.search.lookup(id)) return fail(notPossible('unknown_model'));
   const status = await deps.quick.status(id);
   if (!status.canEnter) return fail(status.reason ?? notPossible('agent_failed'));
-  return { content: JSON.stringify({ ok: true, result: 'highlighted' }), isError: false, events: [{ type: 'open', modelId: id, reason }] };
+  push({ type: 'open', modelId: id, reason });
+  return { content: JSON.stringify({ ok: true, result: 'highlighted' }), isError: false };
 }
 
-const RUNNERS: Record<string, (input: unknown, deps: ToolDeps) => Promise<ToolOutcome>> = {
+const RUNNERS: Record<string, (input: unknown, deps: ToolDeps, push: Push) => Promise<Result>> = {
   search_properties: searchProperties,
   quick_audio_summary: quickAudioSummary,
   open_tour: openTour,
 };
 
-/** Never throws: bad input → bad_request, an unexpected error → agent_failed (its text is not passed on). */
+/**
+ * Never throws: bad input → bad_request, an unexpected error → agent_failed (its text is not passed on).
+ * `deps.emit`, when given, receives each event as it happens (a status line before the slow part); `events` lists them all.
+ */
 export async function runTool(name: string, input: unknown, deps: ToolDeps): Promise<ToolOutcome> {
+  const events: AgentEvent[] = [];
+  const push: Push = event => { events.push(event); deps.emit?.(event); };
   const runner = Object.hasOwn(RUNNERS, name) ? RUNNERS[name] : undefined;
-  if (!runner) return fail(notPossible('bad_request', `Not possible: there is no tool named ${JSON.stringify(name.slice(0, 40))}.`));
-  try {
-    return await runner(input, deps);
-  } catch (err) {
-    if (err instanceof BadInput) return fail(notPossible('bad_request', `Not possible: ${err.message}.`));
-    return fail(notPossible('agent_failed'));
+  let result: Result;
+  if (!runner) {
+    result = fail(notPossible('bad_request', `Not possible: there is no tool named ${JSON.stringify(name.slice(0, 40))}.`));
+  } else {
+    try {
+      result = await runner(input, deps, push);
+    } catch (err) {
+      result = fail(err instanceof BadInput ? notPossible('bad_request', `Not possible: ${err.message}.`) : notPossible('agent_failed'));
+    }
   }
+  return { ...result, events };
 }
