@@ -298,6 +298,9 @@ export function startTour(modelId: string): void {
             sources: sources.map(s => ({ position: s.position })),
             paths: msg.paths,
             pathSource: msg.pathSource,
+            rays: msg.rays,
+            raySegmentStrength: msg.raySegmentStrength,
+            rayHits: msg.rayHits,
           });
         }
         // Until the room's reverb job answers, the trace's estimate stands in (5.5): once per room, not every trace.

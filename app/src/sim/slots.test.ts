@@ -42,6 +42,7 @@ it('draws the strongest paths, strongest first, starting 0.3 m from the listener
   const early: EarlyResult = {
     rays: 2, bounces: 2,
     hitPoints: new Float32Array([0, 2, 0, 2, 2, 0, 0, 0, 1, 0, 0, 0]),
+    hitStrength: new Float32Array(12),
     hitCount: new Uint8Array([2, 1]),
     meanFreePath: 1, averageAbsorption: [0.2, 0.2, 0.2],
     contributions: [
@@ -60,4 +61,17 @@ it('draws the strongest paths, strongest first, starting 0.3 m from the listener
     0, 0, 1, 5, 0, 0,
   ].map(v => Math.fround(v)));
   expect(drawnPaths(early, listener, [source], 1).pathSource.length).toBe(3);
+});
+
+import { rayFan } from './trace';
+it('rayFan: segments chain from the listener, strength drops at each hit', () => {
+  const early = {
+    rays: 1, bounces: 2, contributions: [], meanFreePath: 0, averageAbsorption: [0, 0, 0] as [number, number, number],
+    hitPoints: new Float32Array([1, 0, 0, 1, 1, 0]), hitCount: Uint8Array.from([2]), hitStrength: Float32Array.from([0.8, 0.4]),
+  };
+  const f = rayFan(early, [0, 0, 0]);
+  expect(Array.from(f.rays)).toEqual([0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0]);
+  expect(Array.from(f.raySegmentStrength)).toEqual([1, Math.fround(0.8)]);
+  expect(f.rayHits[3]).toBeCloseTo(0.2);
+  expect(f.rayHits[7]).toBeCloseTo(0.5);
 });

@@ -64,8 +64,9 @@ Say what a person needs: where it comes from, how loud it is here, and what is i
   direction is plain. It is thick where the sound is loud and steps thinner after every wall; the wall wears a badge with
   its cost ("−21 dB"). It ends 0.75 m below the camera, because a line that ends exactly at the eye projects onto one pixel.
 - **The floor:** painted by street noise (the simulation's `field`: one ray per cell). Red is where the street gets in.
-- **Echoes:** off by default (Echoes in the dock). The strongest few, grouped by arrival direction, as thin dotted lines
-  with a ring where each bounces.
+- **Rays:** off by default (Rays in the dock). About 120 of the traced rays from you, drawn as they bounce: each leg is
+  as opaque as the strength the ray still has, so it fades at every wall; a dark dot at each hit is bigger and darker
+  the more that wall absorbed.
 - **Compass:** a dial at you that turns with the view: each source's direction, how much gets through, and where echoes arrive from.
 - **Room card:** a listing-style fact (quiet, moderate, loud), street noise by low, mid and high, and the echo decay curve.
 - Everything is computed from the same trace the audio uses. Values are estimates, and the UI says so.

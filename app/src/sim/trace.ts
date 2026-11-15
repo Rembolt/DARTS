@@ -1,16 +1,40 @@
 // One trace (mvp-design.md 5.2 to 5.5): direct sound, early reflections and echo slots for every source.
 import { directSound } from './direct';
-import { traceEarly, type Contribution } from './early';
+import { traceEarly, type Contribution, type EarlyResult } from './early';
 import type { SimState } from './load';
 import { mulberry32, type Rng } from './sampling';
 import { binSlots, drawnPaths } from './slots';
-import type { Bands, FromWorker, SourceResult, ToWorker } from './types';
+import type { Bands, FromWorker, SourceResult, ToWorker, Vec3 } from './types';
 
 export type TraceRequest = Extract<ToWorker, { type: 'trace' }>;
 export type TraceMessage = Extract<FromWorker, { type: 'trace' }>;
 
 /** A fixed seed by default: the same listener position gives the same result, so nothing flickers between traces. */
 export const TRACE_SEED = 1;
+
+/** How many of the traced rays are sent for drawing (an even sample of the sphere: the rays are Fibonacci-spread). */
+export const DRAWN_RAYS = 120;
+
+/** The first `DRAWN_RAYS` evenly spaced rays as segments (listener → hit → hit …), their strengths, and each hit's absorbed share. */
+export function rayFan(early: EarlyResult, listener: Vec3, maxRays = DRAWN_RAYS) {
+  const stride = Math.max(1, Math.floor(early.rays / maxRays));
+  const seg: number[] = [], strength: number[] = [], hits: number[] = [];
+  for (let r = 0; r < early.rays; r += stride) {
+    let from: ArrayLike<number> = listener;
+    let carried = 1;
+    for (let b = 0; b < early.hitCount[r]; b++) {
+      const at = (r * early.bounces + b) * 3;
+      const to = early.hitPoints.subarray(at, at + 3);
+      const left = early.hitStrength[r * early.bounces + b];
+      seg.push(from[0], from[1], from[2], to[0], to[1], to[2]);
+      strength.push(carried);
+      hits.push(to[0], to[1], to[2], carried > 0 ? Math.min(1, Math.max(0, 1 - left / carried)) : 0);
+      carried = left;
+      from = to;
+    }
+  }
+  return { rays: new Float32Array(seg), raySegmentStrength: new Float32Array(strength), rayHits: new Float32Array(hits) };
+}
 
 export const ECHO_TIME_MIN = 0.2; // seconds
 export const ECHO_TIME_MAX = 2.5; // seconds
@@ -56,6 +80,7 @@ export function trace(state: SimState, msg: TraceRequest, rng: Rng = mulberry32(
     sources,
     paths,
     pathSource,
+    ...rayFan(early, msg.listener),
     timings: { direct: t1 - t0, early: t2 - t1, slots: t3 - t2 },
   };
 }

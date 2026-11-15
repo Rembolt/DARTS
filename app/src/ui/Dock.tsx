@@ -40,8 +40,8 @@ export function Dock() {
           </button>
         )}
         {bp.on && (
-          <button type="button" class={`tool ${ui.showEchoes.value ? 'on' : ''}`} aria-pressed={ui.showEchoes.value} title="Show the strongest echoes" onClick={() => (ui.showEchoes.value = !ui.showEchoes.value)}>
-            <AudioWaveform size={16} /> <span class="lbl">Echoes</span>
+          <button type="button" class={`tool ${ui.showEchoes.value ? 'on' : ''}`} aria-pressed={ui.showEchoes.value} title="Show the rays bouncing and fading as walls absorb them" onClick={() => (ui.showEchoes.value = !ui.showEchoes.value)}>
+            <AudioWaveform size={16} /> <span class="lbl">Rays</span>
           </button>
         )}
         <span class="sep" />

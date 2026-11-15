@@ -148,6 +148,8 @@ export type Sonar = {
   /** Walls between the listener and each source (index = source), or undefined while unknown. */
   setWalls(walls: (Wall[] | undefined)[]): void;
   setEchoes(on: boolean): void;
+  /** Thin and dim the direct line, so the rays around it can be read (Rays on). */
+  setSubdued(on: boolean): void;
   tick(seconds: number): void;
   setSize(width: number, height: number, pixelRatio: number): void;
   dispose(): void;
@@ -168,6 +170,7 @@ export function createSonar(s = SONAR): Sonar {
   let strengths: number[] = [];
   let walls: (Wall[] | undefined)[] = [];
   let showEchoes = false;
+  let subdued = false;
   let echoBeams: Beam[] = [];
   let bounces: number[][] = [];
   let size = { w: 1, h: 1, ratio: 1 };
@@ -199,23 +202,9 @@ export function createSonar(s = SONAR): Sonar {
   };
 
   const build = () => {
-    // The direct line of every source, in pieces.
+    // Direct flow lines are hidden; only rings and bouncing rays are shown.
     pieces = [];
-    let n = 0;
-    for (const route of routes.filter(r => r.direct)) {
-      const fallback = -10 * Math.log10(Math.max(0.0005, strengths[route.source] ?? 1));
-      for (const section of sectionsOf(route.length, walls[route.source], fallback)) {
-        const line = lineAt(flow, n++, true);
-        const a = pointAlong(route.points, section.from);
-        const b = pointAlong(route.points, section.to);
-        line.geometry.setPositions([...a, ...b]);
-        line.computeLineDistances();
-        // Dashes line up across pieces, so the flow looks like one line that thins.
-        (line.material as LineMaterial & { userData: { start: number } }).userData.start = section.from;
-        pieces.push({ line, section, source: route.source });
-      }
-    }
-    flow.children.forEach((c, i) => (c.visible = i < n));
+    flow.visible = false;
 
     // Echoes: thin dotted lines, only when asked for.
     echoBeams = showEchoes ? groupEchoes(routes, s) : [];
@@ -250,6 +239,9 @@ export function createSonar(s = SONAR): Sonar {
       showEchoes = on;
       build();
     },
+    setSubdued(on) {
+      subdued = on;
+    },
     setSize(w, h, ratio) {
       size = { w, h, ratio };
       for (const g of [flow, echoes]) for (const l of g.children) (l as Line2).material.resolution.set(w * ratio, h * ratio);
@@ -261,9 +253,9 @@ export function createSonar(s = SONAR): Sonar {
         const m = p.line.material;
         const start = (m.userData as { start: number }).start;
         m.dashOffset = -(slide) + start; // pattern coordinate = distance along this piece + start, so pieces line up
-        m.linewidth = widthFor(p.section.lossDb, s) * size.ratio;
+        m.linewidth = widthFor(p.section.lossDb, s) * (subdued ? 0.3 : 1) * size.ratio;
         m.color.copy(colorOf(p.source));
-        m.opacity = 0.55 + 0.4 * Math.max(0, 1 - p.section.lossDb / 60);
+        m.opacity = (0.55 + 0.4 * Math.max(0, 1 - p.section.lossDb / 60)) * (subdued ? 0.6 : 1);
       }
       echoBeams.forEach((beam, i) => {
         const m = (echoes.children[i] as Line2).material;

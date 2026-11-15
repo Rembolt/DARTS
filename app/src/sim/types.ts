@@ -91,6 +91,12 @@ export type FromWorker =
       sources: SourceResult[];
       paths: Float32Array; // line segments as pairs of points
       pathSource: Uint8Array; // which source each segment belongs to
+      /** A sample of the traced rays, for drawing the bouncing: line segments as pairs of points, one ray after another. */
+      rays?: Float32Array;
+      /** Per ray segment: mid-band strength the ray carries along it (1 at the listener, less after every wall it hit). */
+      raySegmentStrength?: Float32Array;
+      /** Per ray hit, 4 floats: x, y, z and the share of the ray's strength the wall absorbed (0..1). */
+      rayHits?: Float32Array;
     }
   | { type: 'reverb'; roomId: string; echoTime: Bands; ms: number }
   | { type: 'roomsReady'; rooms: { id: string; triangles: number }[]; untagged: number; exteriorWalls: number; ms: number }

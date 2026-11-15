@@ -10,8 +10,11 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
+  Points,
+  PointsMaterial,
   SphereGeometry,
   Color,
+  CanvasTexture,
 } from 'three';
 import type { Vec3 } from '../sim/types';
 import { createSonar } from './sonar';
@@ -40,6 +43,17 @@ export const PATHS_STYLE = {
    */
   markerRadius: 0.12,
   markerAlpha: 0.9,
+  /** The ray fan (Rays in the dock): colour of the rays, of the dots where a wall takes some, and their sizes. */
+  rayColor: '#d9462a',
+  hitColor: '#2b1d14',
+  rayMinAlpha: 0.1,
+  rayMaxAlpha: 0.85,
+  hitSize: 7, // pixels at full absorption
+  /** The ray animation: how fast a wavefront travels (drawn m/s), how long the finished fan stays, then fades (s). */
+  raySpeed: 10,
+  rayHold: 1.2,
+  rayFade: 0.8,
+  headSize: 10, // pixels, the bright point at the front of each ray
   /** Opacity of the paths themselves: a faint trail under the sonar pulses (sonar.ts). */
   trailOpacity: 0.22,
 };
@@ -49,6 +63,10 @@ export type TraceOverlay = {
   sources: { position: Vec3 }[];
   paths: Float32Array; // 6 floats per segment, strongest path first (the worker's `trace` reply)
   pathSource: Uint8Array; // one source index per segment
+  /** The ray fan: segments (6 floats each), the strength each carries (0..1) and the hits (x, y, z, absorbed share). */
+  rays?: Float32Array;
+  raySegmentStrength?: Float32Array;
+  rayHits?: Float32Array;
   /** How much of each source gets through the walls (0..1, mid band): the direct beam calms by this much on the way. */
   directStrength?: number[];
 };
@@ -146,6 +164,130 @@ export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
   return routes;
 }
 
+/** Vertex arrays for the ray fan: every segment opaque by the strength it still carries; every hit by what the wall took. */
+export function buildRayArrays(trace: TraceOverlay, style = PATHS_STYLE) {
+  const rays = trace.rays ?? new Float32Array(0);
+  const strength = trace.raySegmentStrength ?? new Float32Array(0);
+  const segments = Math.min(Math.floor(rays.length / 6), strength.length);
+  const rayColors = new Float32Array(segments * 8);
+  const c = new Color(style.rayColor);
+  for (let i = 0; i < segments; i++) {
+    const a = style.rayMinAlpha + (style.rayMaxAlpha - style.rayMinAlpha) * Math.min(1, Math.max(0, strength[i]));
+    rayColors.set([c.r, c.g, c.b, a, c.r, c.g, c.b, a], i * 8);
+  }
+  const hits = trace.rayHits ?? new Float32Array(0);
+  const n = Math.floor(hits.length / 4);
+  const hitPositions = new Float32Array(n * 3);
+  const hitColors = new Float32Array(n * 4);
+  const h = new Color(style.hitColor);
+  for (let i = 0; i < n; i++) {
+    hitPositions.set(hits.subarray(i * 4, i * 4 + 3), i * 3);
+    hitColors.set([h.r, h.g, h.b, 0.1 + 0.8 * Math.min(1, Math.max(0, hits[i * 4 + 3]))], i * 4);
+  }
+  return { rayPositions: rays.slice(0, segments * 6), rayColors, hitPositions, hitColors };
+}
+
+let dotTexture: CanvasTexture | null = null;
+/** A soft round dot for the ray points (a point is a square without it). */
+function dot(): CanvasTexture | null {
+  if (dotTexture || typeof document === 'undefined') return dotTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  dotTexture = new CanvasTexture(c);
+  return dotTexture;
+}
+
+export type RayPlan = {
+  n: number; // segments
+  start: Float32Array; // 3 per segment
+  end: Float32Array;
+  cum0: Float32Array; // metres travelled along the ray when the segment starts
+  len: Float32Array;
+  strength: Float32Array; // carried along the segment, 0..1
+  absorbed: Float32Array; // share the wall at the segment's end takes, 0..1
+  maxLen: number; // longest ray in metres
+};
+
+/** The fan as a plan to animate: segments chained into rays (a ray starts where a segment begins at the listener). */
+export function planRays(trace: TraceOverlay): RayPlan {
+  const rays = trace.rays ?? new Float32Array(0);
+  const strength = trace.raySegmentStrength ?? new Float32Array(0);
+  const hits = trace.rayHits ?? new Float32Array(0);
+  const n = Math.min(Math.floor(rays.length / 6), strength.length, Math.floor(hits.length / 4));
+  const plan: RayPlan = {
+    n, start: new Float32Array(n * 3), end: new Float32Array(n * 3), cum0: new Float32Array(n),
+    len: new Float32Array(n), strength: strength.slice(0, n), absorbed: new Float32Array(n), maxLen: 0,
+  };
+  let cum = 0;
+  for (let i = 0; i < n; i++) {
+    const o = i * 6;
+    const fromListener = Math.hypot(rays[o] - trace.listener[0], rays[o + 1] - trace.listener[1], rays[o + 2] - trace.listener[2]) < 1e-4;
+    if (fromListener) cum = 0;
+    plan.start.set(rays.subarray(o, o + 3), i * 3);
+    plan.end.set(rays.subarray(o + 3, o + 6), i * 3);
+    plan.len[i] = Math.hypot(rays[o + 3] - rays[o], rays[o + 4] - rays[o + 1], rays[o + 5] - rays[o + 2]);
+    plan.cum0[i] = cum;
+    plan.absorbed[i] = hits[i * 4 + 3];
+    cum += plan.len[i];
+    plan.maxLen = Math.max(plan.maxLen, cum);
+  }
+  return plan;
+}
+
+/** Seconds one run of the animation lasts: the wave reaches the longest ray's end, holds, then fades. */
+export function rayPeriod(plan: RayPlan, style = PATHS_STYLE): number {
+  return plan.maxLen / style.raySpeed + style.rayHold + style.rayFade;
+}
+
+/**
+ * One frame of the animation at `seconds`: every ray grows from you at `raySpeed`; a bright head runs at its tip;
+ * where it reaches a wall the wall flashes (size by what it absorbs) and the ray carries on dimmer, until it is gone.
+ */
+export function rayFrame(plan: RayPlan, seconds: number, style = PATHS_STYLE) {
+  const period = rayPeriod(plan, style);
+  const t = seconds % period;
+  const headAt = t * style.raySpeed;
+  const fadeStart = plan.maxLen / style.raySpeed + style.rayHold;
+  const fade = t > fadeStart ? Math.max(0, 1 - (t - fadeStart) / style.rayFade) : 1;
+  const n = plan.n;
+  const positions = new Float32Array(n * 6);
+  const colors = new Float32Array(n * 8);
+  const hitPositions = new Float32Array(n * 3);
+  const hitColors = new Float32Array(n * 4);
+  const headPositions = new Float32Array(n * 3);
+  const headColors = new Float32Array(n * 4);
+  const c = new Color(style.rayColor), h = new Color(style.hitColor);
+  for (let i = 0; i < n; i++) {
+    const len = plan.len[i];
+    const reach = Math.min(len, Math.max(0, headAt - plan.cum0[i]));
+    const f = len > 0 ? reach / len : 0;
+    const sx = plan.start[i * 3], sy = plan.start[i * 3 + 1], sz = plan.start[i * 3 + 2];
+    const ex = sx + (plan.end[i * 3] - sx) * f, ey = sy + (plan.end[i * 3 + 1] - sy) * f, ez = sz + (plan.end[i * 3 + 2] - sz) * f;
+    positions.set([sx, sy, sz, ex, ey, ez], i * 6);
+    const a = (style.rayMinAlpha + (style.rayMaxAlpha - style.rayMinAlpha) * plan.strength[i]) * fade * (reach > 0 ? 1 : 0);
+    colors.set([c.r, c.g, c.b, a * 0.55, c.r, c.g, c.b, a], i * 8);
+    // The bright head, only while this segment is being crossed.
+    const crossing = reach > 0 && reach < len;
+    headPositions.set([ex, ey, ez], i * 3);
+    headColors.set([1, 0.55, 0.08, crossing ? fade * (0.5 + 0.5 * plan.strength[i]) : 0], i * 4);
+    // The wall at the segment's end: flashes when the head arrives, then stays as a dot sized by what it took.
+    const since = (headAt - (plan.cum0[i] + len)) / style.raySpeed; // seconds since the head reached it
+    hitPositions.set(plan.end.subarray(i * 3, i * 3 + 3), i * 3);
+    const flash = since >= 0 && since < 0.35 ? 1 - since / 0.35 : 0;
+    const base = since >= 0 ? (0.1 + 0.8 * plan.absorbed[i]) * fade : 0;
+    hitColors.set([h.r, h.g, h.b, Math.min(1, base + flash * (0.4 + plan.absorbed[i]))], i * 4);
+  }
+  return { positions, colors, hitPositions, hitColors, headPositions, headColors };
+}
+
 export type TraceArrays = {
   pathPositions: Float32Array; // 3 per vertex, 2 vertices per segment
   pathColors: Float32Array; // RGBA per vertex
@@ -233,7 +375,7 @@ export type PathsLayer = {
   set(trace: TraceOverlay | null): void;
   /** Walls between the listener and each source (index = source), from the simulation. */
   setWalls(walls: ({ distance: number; lossDb: number }[] | undefined)[]): void;
-  /** Show the strongest echoes as thin dotted lines. */
+  /** Show every sampled ray bouncing around, fading where walls absorb it. */
   setEchoes(on: boolean): void;
   setPixelRatio(pixelRatio: number): void;
   /** The canvas size in CSS pixels, for the fat lines. */
@@ -256,6 +398,13 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
 
   const pathLines = new LineSegments(new BufferGeometry(), pathMaterial);
   const directLines = new LineSegments(new BufferGeometry(), directMaterial);
+  const rayMaterial = new LineBasicMaterial({ ...overlay });
+  const hitMaterial = new PointsMaterial({ ...overlay, size: style.hitSize, sizeAttenuation: false, map: dot() });
+  const headMaterial = new PointsMaterial({ ...overlay, size: style.headSize, sizeAttenuation: false, map: dot() });
+  const headDots = new Points(new BufferGeometry(), headMaterial);
+  let plan: RayPlan | null = null;
+  const rayLines = new LineSegments(new BufferGeometry(), rayMaterial);
+  const hitDots = new Points(new BufferGeometry(), hitMaterial);
   const markers = new Group(); // one sphere per source, made on demand
   const object = new Group();
   for (const [o, order] of [[pathLines, 1], [directLines, 2], [markers, 3]] as const) {
@@ -263,9 +412,18 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
     o.renderOrder = order;
     object.add(o);
   }
+  for (const [o, order] of [[rayLines, 1], [hitDots, 2], [headDots, 3]] as const) {
+    o.frustumCulled = false;
+    o.renderOrder = order;
+    object.add(o);
+  }
   object.visible = false;
   directLines.visible = false;
   pathLines.visible = false;
+  rayLines.visible = false;
+  hitDots.visible = false;
+  headDots.visible = false;
+  let showRays = false;
 
   // The animated sound: wavefronts, pulses and bounce flashes (sonar.ts).
   const sonar = createSonar();
@@ -312,12 +470,30 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
     },
     tick(seconds) {
       sonar.tick(seconds);
+      if (showRays && plan && plan.n > 0) {
+        const f = rayFrame(plan, seconds, style);
+        const put = (g: BufferGeometry, name: string, data: Float32Array) => {
+          const a = g.getAttribute(name) as BufferAttribute;
+          (a.array as Float32Array).set(data);
+          a.needsUpdate = true;
+        };
+        put(rayLines.geometry, 'position', f.positions);
+        put(rayLines.geometry, 'color', f.colors);
+        put(hitDots.geometry, 'position', f.hitPositions);
+        put(hitDots.geometry, 'color', f.hitColors);
+        put(headDots.geometry, 'position', f.headPositions);
+        put(headDots.geometry, 'color', f.headColors);
+      }
     },
     setWalls(walls) {
       sonar.setWalls(walls);
     },
     setEchoes(on) {
-      sonar.setEchoes(on);
+      showRays = on;
+      sonar.setSubdued(on);
+      rayLines.visible = on;
+      hitDots.visible = on;
+      headDots.visible = on;
     },
     set(trace) {
       if (!trace) {
@@ -329,6 +505,15 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
       sonar.set(buildRoutes(trace, style), trace.sources.map(src => src.position), style.sourceColors, trace.directStrength ?? []);
       const a = buildTraceArrays(trace, style);
       fill(pathLines, a.pathPositions, a.pathColors, 4);
+      plan = planRays(trace);
+      const f = rayFrame(plan, 0, style);
+      fill(rayLines, f.positions, f.colors, 4);
+      for (const [dots, pos, col] of [[hitDots, f.hitPositions, f.hitColors], [headDots, f.headPositions, f.headColors]] as const) {
+        dots.geometry = writeAttribute(dots.geometry, 'position', pos, 3);
+        dots.geometry = writeAttribute(dots.geometry, 'color', col, 4);
+        dots.geometry.setDrawRange(0, pos.length / 3);
+      }
+      rayLines.visible = hitDots.visible = headDots.visible = showRays;
       fill(directLines, a.directPositions, a.directColors, 4);
       placeMarkers(a.markerPositions, a.markerColors);
       // LineDashedMaterial needs the distance along each line. Written here rather than by computeLineDistances(),
@@ -346,7 +531,10 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
       sonar.setSize(w, h, pixelRatio);
     },
     dispose() {
-      for (const o of [pathLines, directLines]) o.geometry.dispose();
+      for (const o of [pathLines, directLines, rayLines, hitDots, headDots]) o.geometry.dispose();
+      rayMaterial.dispose();
+      hitMaterial.dispose();
+      headMaterial.dispose();
       pathMaterial.dispose();
       directMaterial.dispose();
       sonar.dispose();

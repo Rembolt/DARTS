@@ -43,7 +43,7 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         }
         const result = trace(state, msg);
         lastEstimate = result.echoTimeEstimate;
-        post(result, [result.paths.buffer, result.pathSource.buffer]);
+        post(result, [result.paths.buffer, result.pathSource.buffer, result.rays!.buffer, result.raySegmentStrength!.buffer, result.rayHits!.buffer]);
         break;
       }
       case 'walls': {

@@ -31,6 +31,8 @@ export type EarlyResult = {
   /** Hit points per ray: ray r, hit b at `hitPoints[(r * bounces + b) * 3 ..]`. Only the first `hitCount[r]` are set. */
   hitPoints: Float32Array;
   hitCount: Uint8Array;
+  /** Mid-band strength left in the ray after each hit (1 = untouched, 0 = fully absorbed), same layout as `hitPoints` / 3. */
+  hitStrength: Float32Array;
   /** Average length of the ray segments that ended on a surface, metres (0 when nothing was hit). */
   meanFreePath: number;
   /** Average `absorption + furnishing` (each clamped to 0.99) per band over all hits (0 when nothing was hit). */
@@ -50,22 +52,24 @@ export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput
   const bounces = config.bounces;
   const hitPoints = new Float32Array(rays * bounces * 3);
   const hitCount = new Uint8Array(rays);
+  const hitStrength = new Float32Array(rays * bounces);
   const contributions: Contribution[] = [];
   const stats = traceRays(state, listener, sources, rng, {
     rays,
     bounces,
     maxLegWalls: config.maxLegWalls,
     minStrength: 0,
-    onHit(r, b, x, y, z) {
+    onHit(r, b, x, y, z, left) {
       const at = (r * bounces + b) * 3;
       hitPoints[at] = x; hitPoints[at + 1] = y; hitPoints[at + 2] = z;
       hitCount[r] = b + 1;
+      hitStrength[r * bounces + b] = left;
     },
     onContribution(source, e0, e1, e2, arrival, r, b, first) {
       contributions.push({ source, energy: [e0, e1, e2], arrival, direction: first, ray: r, bounce: b });
     },
   });
-  return { rays, bounces, contributions, hitPoints, hitCount, ...stats };
+  return { rays, bounces, contributions, hitPoints, hitCount, hitStrength, ...stats };
 }
 
 export type RayTraceOptions = {
@@ -75,8 +79,8 @@ export type RayTraceOptions = {
   maxLegWalls: number;
   /** A ray stops once its strength is at or below this in every band (0: only when it is fully absorbed). */
   minStrength: number;
-  /** Every hit point, in order along each ray. */
-  onHit?: (ray: number, bounce: number, x: number, y: number, z: number) => void;
+  /** Every hit point, in order along each ray, with the mid-band strength the ray has left after this wall took its share. */
+  onHit?: (ray: number, bounce: number, x: number, y: number, z: number, strengthLeft: number) => void;
   /** Every contribution: energy per band against the source's unobstructed direct sound (1/D²), arrival in seconds. */
   onContribution: (
     source: number, e0: number, e1: number, e2: number, arrival: number, ray: number, bounce: number, first: Vec3,
@@ -136,8 +140,6 @@ export function traceRays(
       const px = origin[0] + dir[0] * hit.distance;
       const py = origin[1] + dir[1] * hit.distance;
       const pz = origin[2] + dir[2] * hit.distance;
-      onHit?.(r, b, px, py, pz);
-
       const t = hit.triangle;
       // Panel triangles (closed doors and windows) are numbered after the main mesh's.
       const onMesh = t < mainTriangles;
@@ -155,6 +157,7 @@ export function traceRays(
         absorptionSum[k] += a[k];
         strength[k] *= Math.max(0, 1 - a[k]);
       }
+      onHit?.(r, b, px, py, pz, strength[1]);
       if (strength[0] <= minStrength && strength[1] <= minStrength && strength[2] <= minStrength) break;
 
       legStart[0] = px + n[0] * SURFACE_OFFSET;

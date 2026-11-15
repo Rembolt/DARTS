@@ -451,8 +451,15 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
 
   // ---- Wall badges between listener and sources ----
   let wallsBusy = false;
-  const refreshWalls = async (listener: Vec3, srcs: { id: string; position: Vec3 }[]) => {
-    if (wallsBusy || !meshReady) return;
+  // A request that arrives while one is running is kept (the newest only) and run after it, so the badges never
+  // stay on where you were a moment ago.
+  let wallsNext: { listener: Vec3; srcs: { id: string; position: Vec3 }[] } | null = null;
+  const refreshWalls = async (listener: Vec3, srcs: { id: string; position: Vec3 }[]): Promise<void> => {
+    if (!meshReady) return;
+    if (wallsBusy) {
+      wallsNext = { listener, srcs };
+      return;
+    }
     wallsBusy = true;
     try {
       const results = await Promise.all(srcs.map(s => field.walls(listener, s.position)));
@@ -477,6 +484,9 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       });
     } finally {
       wallsBusy = false;
+      const next = wallsNext;
+      wallsNext = null;
+      if (next) void refreshWalls(next.listener, next.srcs);
     }
   };
 
