@@ -2,12 +2,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { createAudioEngine } from './engine';
 import { dbToGain } from './levels';
 import type { SourceResult } from '../sim/types';
+import { AUDIO, SLOT_DIRECTIONS } from '../config';
 
 // A minimal fake of the Web Audio nodes the engine touches. Params remember their last value or target.
 class Param {
   value = 0;
-  setTargetAtTime(v: number) { this.value = v; return this; }
-  setValueAtTime(v: number) { this.value = v; return this; }
+  events: [string, number, number][] = [];
+  setTargetAtTime(v: number, t: number) { this.value = v; this.events.push(['target', v, t]); return this; }
+  setValueAtTime(v: number, t: number) { this.value = v; this.events.push(['set', v, t]); return this; }
+  linearRampToValueAtTime(v: number, t: number) { this.value = v; this.events.push(['ramp', v, t]); return this; }
+  cancelScheduledValues(t: number) { this.events.push(['cancel', 0, t]); return this; }
 }
 class Node {
   out: Node[] = [];
@@ -19,7 +23,7 @@ class Source extends Node {
 }
 
 function fakeContext() {
-  const made = { panners: [] as Record<string, any>[], gains: [] as any[], filters: [] as any[], sources: [] as Source[] };
+  const made = { panners: [] as Record<string, any>[], gains: [] as any[], filters: [] as any[], sources: [] as Source[], delays: [] as any[] };
   const ctx = {
     currentTime: 0,
     sampleRate: 8000,
@@ -42,6 +46,7 @@ function fakeContext() {
     createDynamicsCompressor() {
       return Object.assign(new Node(), { threshold: new Param(), knee: new Param(), ratio: new Param(), attack: new Param(), release: new Param() });
     },
+    createDelay(max: number) { const d = Object.assign(new Node(), { max, delayTime: new Param() }); made.delays.push(d); return d; },
     createBufferSource() { const s = new Source(); made.sources.push(s); return s; },
     createBuffer(_c: number, n: number) { const d = new Float32Array(n); return { getChannelData: () => d, length: n }; },
     decodeAudioData: vi.fn(),
@@ -56,9 +61,16 @@ async function setup() {
   vi.spyOn(console, 'info').mockImplementation(() => {});
   const f = fakeContext();
   const engine = await createAudioEngine({ context: f.ctx, fetch: missing });
-  // Voices are built indoor first: filters [lo, hi] per voice; gains [master, volume, indoor, outdoor].
-  const [, volume, indoorGain, outdoorGain] = f.made.gains;
-  return { ...f, engine, volume, indoorGain, outdoorGain, indoorPanner: f.made.panners[0], outdoorPanner: f.made.panners[1] };
+  // Build order: master, volume; then per voice (indoor first) the direct path, 12 slots, the send.
+  // Gains per voice: [direct, 12 slots, send]; panners per voice: [direct, 12 slots]; filters: [lo, hi] × 13.
+  const g = f.made.gains, p = f.made.panners;
+  return {
+    ...f, engine, volume: g[1],
+    indoorGain: g[2], indoorSlotGains: g.slice(3, 15), indoorSend: g[15],
+    outdoorGain: g[16], outdoorSlotGains: g.slice(17, 29),
+    indoorPanner: p[0], indoorSlotPanners: p.slice(1, 13), outdoorPanner: p[13],
+    indoorSlotDelays: f.made.delays.slice(0, 12),
+  };
 }
 
 describe('createAudioEngine (fake AudioContext)', () => {
@@ -72,7 +84,11 @@ describe('createAudioEngine (fake AudioContext)', () => {
       expect(p.rolloffFactor).toBe(0);
     }
     expect(volume.gain.value).toBeGreaterThan(0);
-    expect(made.filters.map((f) => f.type)).toEqual(['lowshelf', 'highshelf', 'lowshelf', 'highshelf']);
+    expect(made.panners).toHaveLength(26);
+    expect(made.delays).toHaveLength(24);
+    expect(made.delays.every((d) => d.max === AUDIO.maxDelay)).toBe(true);
+    expect(made.filters).toHaveLength(52);
+    expect(made.filters.slice(0, 4).map((f) => f.type)).toEqual(['lowshelf', 'highshelf', 'lowshelf', 'highshelf']);
   });
 
   it('fades the song as 1/D when the listener walks away; the highway stays 12 dB down', async () => {
@@ -111,5 +127,48 @@ describe('createAudioEngine (fake AudioContext)', () => {
     await engine.stop();
     expect(made.sources.every((s) => s.stopped)).toBe(true);
     expect(raw.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the slot panners 2 m from the listener along fixed world directions', async () => {
+    const { engine, indoorSlotPanners } = await setup();
+    engine.setListenerPose(pose(1, 2, 3, 20, 75));
+    indoorSlotPanners.forEach((p, i) => {
+      const d = SLOT_DIRECTIONS[i];
+      expect(p.positionX.value).toBeCloseTo(1 + 2 * d[0]);
+      expect(p.positionY.value).toBeCloseTo(2 + 2 * d[1]);
+      expect(p.positionZ.value).toBeCloseTo(3 + 2 * d[2]);
+    });
+  });
+
+  it('feeds echo slots from the trace: gain, delay, and a dip for a jump', async () => {
+    const { engine, raw, indoorSlotGains, indoorSlotDelays, indoorSend } = await setup();
+    const slots = Array.from({ length: 12 }, () => ({ energy: [0, 0, 0] as [number, number, number], delay: 0 }));
+    slots[0] = { energy: [0.04, 0.04, 0.04], delay: 0.01 };
+    const result = (s: typeof slots) =>
+      ({ id: 'indoor', distance: 4, direct: [1, 1, 1], walls: 0, slots: s, lateEnergy: [0, 0.16, 0] }) as SourceResult;
+
+    engine.applySimResult([result(slots)]);
+    expect(indoorSlotGains[0].gain.value).toBeCloseTo(0.2 * 0.25); // sqrt(0.04) × 1/4
+    expect(indoorSlotDelays[0].delayTime.value).toBeCloseTo(0.01);
+    expect(indoorSlotGains[1].gain.value).toBe(0);
+    expect(indoorSend.gain.value).toBeCloseTo(0.4 * AUDIO.reverbGain);
+
+    raw.currentTime = 1;
+    slots[0] = { energy: [0.04, 0.04, 0.04], delay: 0.05 }; // a 40 ms jump: dip
+    indoorSlotGains[0].gain.events = [];
+    engine.applySimResult([result(slots)]);
+    const d = AUDIO.delayDipTime;
+    expect(indoorSlotGains[0].gain.events).toEqual([
+      ['cancel', 0, 1], ['set', 0.05, 1], ['ramp', 0, 1 + d], ['ramp', 0.05, 1 + 2 * d],
+    ]);
+    expect(indoorSlotDelays[0].delayTime.events.at(-1)).toEqual(['set', 0.05, 1 + d]);
+  });
+
+  it('connects the reverb sends only when asked', async () => {
+    const { engine, indoorSend } = await setup();
+    expect(indoorSend.out).toHaveLength(0);
+    const reverb = new Node();
+    engine.connectReverb(reverb as unknown as AudioNode);
+    expect(indoorSend.out).toEqual([reverb]);
   });
 });
