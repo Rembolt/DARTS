@@ -8,6 +8,9 @@ export const MODEL_ID = 'Ki9YdfpNKum';
 /** Sent with HTTP 503 for any /bundle request while the Bundle is not fetched. The app shows it as is. */
 export const BUNDLE_MISSING = 'Matterport Bundle missing. Run: npm run fetch-bundle';
 
+/** What the server's own root answers: this is the API, the page is on Vite. */
+export const API_ONLY = 'This is the API server. Open the app at http://localhost:5173';
+
 export interface AppOptions {
   /** Folder holding the unpacked Matterport Bundle (written by `npm run fetch-bundle`). */
   bundleDir?: string;
@@ -39,6 +42,12 @@ export function createApp(
       return;
     }
     res.json({ sdkKey, modelId: MODEL_ID });
+  });
+
+  // People open the address the server prints. Point them at the page instead of "Cannot GET /".
+  app.get('/', (_req, res) => {
+    res.type('text/plain').send(`${API_ONLY}
+`);
   });
 
   return app;

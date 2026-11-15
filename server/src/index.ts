@@ -9,7 +9,7 @@ const port = parsePort(process.env.PORT);
 
 try {
   await listen(createApp(env, { bundleDir: resolve(import.meta.dirname, '../bundle') }), port, SERVER_HOST);
-  console.log(`server on http://${SERVER_HOST}:${port}`);
+  console.log(`API server on http://${SERVER_HOST}:${port}. Open the app at http://localhost:5173`);
 } catch (err) {
   if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
     console.error(`port ${port} is in use; set PORT to another one`);

@@ -42,3 +42,11 @@ describe('loadEnv', () => {
     expect(loadEnv(join(tmpdir(), 'no-such-dir', '.env'))).toEqual({});
   });
 });
+
+describe('GET /', () => {
+  it('points to the app instead of answering Cannot GET', async () => {
+    const res = await request(createApp({})).get('/');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('http://localhost:5173');
+  });
+});
