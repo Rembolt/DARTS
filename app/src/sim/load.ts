@@ -3,6 +3,7 @@ import { extractLinesTagged } from './edges';
 import { buildRayIndex, type RayIndex } from './geometry';
 import { mvpTable, resolveSurfaces, type ResolvedSurface, type SetMaterials, type SurfaceTable } from './library';
 import { layerCounts, layersAfterReorder } from './layers';
+import type { Panels } from './openings';
 import { tagMaterials } from './materials';
 import { faceNormals } from './normals';
 import { parseObj, type Mesh } from './obj';
@@ -38,6 +39,10 @@ export type SimState = {
   layerTraced: boolean[];
   /** Every layer traced: ray casts take the plain path. */
   allTraced: boolean;
+  /** Door and window panels (`loadOpenings`), null until loaded. Their triangles are numbered after the mesh's. */
+  panels: Panels | null;
+  /** Opening ids closed by the last `setOpenings`. */
+  closedOpenings: Set<string>;
 };
 
 /** Per-triangle layers in index order, with their names. */
@@ -70,6 +75,8 @@ export function createSimState(
     layerIds: layers.ids,
     layerTraced: layers.ids.map(() => true),
     allTraced: true,
+    panels: null,
+    closedOpenings: new Set(),
   };
   resolveSurfaces(state);
   return state;

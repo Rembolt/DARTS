@@ -3,6 +3,7 @@ import { applySetLayers } from './layers';
 import { applySetMaterials, applySetQuality } from './library';
 import { loadSim, type SimState } from './load';
 import { measure } from './measure';
+import { applySetOpenings, loadOpenings } from './openings';
 import { reverbJob } from './reverb-job';
 import { tagRooms } from './rooms';
 import { trace } from './trace';
@@ -63,6 +64,14 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         break;
       case 'setRooms':
         post(tagRooms(need(msg.type), msg));
+        break;
+      case 'loadOpenings': {
+        const ready = loadOpenings(need(msg.type), msg);
+        post(ready, [ready.lines.buffer]);
+        break;
+      }
+      case 'setOpenings':
+        applySetOpenings(need(msg.type), msg);
         break;
       case 'measure':
         // A trace and a reverb job at the point; lastEstimate stays the listener's.

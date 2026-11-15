@@ -2,6 +2,7 @@
 import { DoubleSide, Ray } from 'three';
 import { firstTracedHit, isTraced } from './layers';
 import { surfaceAt } from './library';
+import { panelHits } from './openings';
 import type { SimState } from './load';
 import type { Bands, Vec3 } from './types';
 
@@ -13,7 +14,8 @@ const ray = new Ray();
  * Walls crossed between `from` and `to`, and the strength left per band after them.
  *
  * - Every triangle hit along the segment counts, from either side (the index is traced `DoubleSide`), except
- *   triangles of untraced layers (`setLayers`).
+ *   triangles of untraced layers (`setLayers`). Closed door and window panels count too: a panel's two faces
+ *   merge into one wall, with the panel's material.
  * - Crossings are grouped into walls: a crossing joins the current wall while it is closer than `wallMergeDistance`
  *   to that wall's FIRST crossing. Measuring from the first crossing (not the previous one) keeps a run of bumpy
  *   scan triangles from chaining into one endless "wall" across a room.
@@ -34,15 +36,18 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     // Only a clear segment passes: the nearest hit is enough, and much cheaper than collecting all of them.
     return firstTracedHit(state, from, [dx, dy, dz], length) ? null : { walls: 0, transmission };
   }
-  let hits = state.index.bvh.raycast(ray, DoubleSide, 0, length);
-  if (!state.allTraced) hits = hits.filter(h => h.faceIndex != null && isTraced(state, h.faceIndex));
+  const hits: { distance: number; triangle: number }[] = [];
+  for (const h of state.index.bvh.raycast(ray, DoubleSide, 0, length)) {
+    if (h.faceIndex != null && isTraced(state, h.faceIndex)) hits.push({ distance: h.distance, triangle: h.faceIndex });
+  }
+  hits.push(...panelHits(state, from, [dx, dy, dz], length));
   if (hits.length === 0) return { walls: 0, transmission };
   const distances = new Float64Array(hits.length);
   const triangles = new Int32Array(hits.length);
   const order = hits.map((_, i) => i).sort((a, b) => hits[a].distance - hits[b].distance);
   order.forEach((h, i) => {
     distances[i] = hits[h].distance;
-    triangles[i] = hits[h].faceIndex ?? -1;
+    triangles[i] = hits[h].triangle;
   });
 
   const { config } = state;
@@ -53,7 +58,6 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     const start = distances[i];
     const blocking: Bands = [0, 0, 0];
     for (; i < distances.length && distances[i] - start < config.wallMergeDistance; i++) {
-      if (triangles[i] < 0) continue;
       const db = surfaceAt(state, triangles[i]).blockingDb;
       for (let k = 0; k < 3; k++) if (db[k] > blocking[k]) blocking[k] = db[k];
     }

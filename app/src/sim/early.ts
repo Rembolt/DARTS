@@ -102,6 +102,7 @@ export function traceRays(
   opts: RayTraceOptions,
 ): Pick<EarlyResult, 'meanFreePath' | 'averageAbsorption'> {
   const { config, normals } = state;
+  const mainTriangles = state.mesh.indices.length / 3;
   const { rays, bounces, maxLegWalls, minStrength, onHit, onContribution } = opts;
   const c = config.speedOfSound;
   const reference = sources.map(s => {
@@ -138,10 +139,14 @@ export function traceRays(
       onHit?.(r, b, px, py, pz);
 
       const t = hit.triangle;
-      if (isDegenerate(normals, t)) {
+      // Panel triangles (closed doors and windows) are numbered after the main mesh's.
+      const onMesh = t < mainTriangles;
+      const nb = onMesh ? normals : state.panels!.normals;
+      const ti = onMesh ? t : t - mainTriangles;
+      if (isDegenerate(nb, ti)) {
         n[0] = -dir[0]; n[1] = -dir[1]; n[2] = -dir[2];
       } else {
-        n[0] = normals[3 * t]; n[1] = normals[3 * t + 1]; n[2] = normals[3 * t + 2];
+        n[0] = nb[3 * ti]; n[1] = nb[3 * ti + 1]; n[2] = nb[3 * ti + 2];
         if (n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] > 0) { n[0] = -n[0]; n[1] = -n[1]; n[2] = -n[2]; }
       }
       const surface = surfaceAt(state, t);

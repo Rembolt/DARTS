@@ -2,6 +2,7 @@
 // `firstTracedHit` (or `crossSegment`, which filters the same way), so an untraced layer is invisible to sound.
 import { firstHit } from './geometry';
 import type { SimState } from './load';
+import { firstPanelHit } from './openings';
 import type { ToWorker, Vec3 } from './types';
 
 export type Hit = { distance: number; triangle: number };
@@ -70,10 +71,22 @@ export function isTraced(state: SimState, t: number): boolean {
 const at: Vec3 = [0, 0, 0];
 
 /**
- * The nearest traced triangle along the ray within `maxDist`. With every layer traced this is exactly `firstHit`.
- * Otherwise a hit on an untraced layer is skipped and the ray continues just past it, up to `MAX_SKIPS` times.
+ * The nearest traced triangle along the ray within `maxDist`, or the nearest closed door or window panel if that is
+ * nearer (its triangle numbered after the main mesh's). With every layer traced and no panel closed this is
+ * exactly `firstHit`.
  */
 export function firstTracedHit(state: SimState, origin: Vec3, dir: Vec3, maxDist = Infinity): Hit | null {
+  const main = firstMeshHit(state, origin, dir, maxDist);
+  if (!state.panels?.anyActive) return main;
+  const panel = firstPanelHit(state, origin, dir, main ? main.distance : maxDist);
+  return panel && (!main || panel.distance < main.distance) ? panel : main;
+}
+
+/**
+ * The nearest main-mesh triangle in a traced layer. A hit on an untraced layer is skipped and the ray continues
+ * just past it, up to `MAX_SKIPS` times.
+ */
+function firstMeshHit(state: SimState, origin: Vec3, dir: Vec3, maxDist: number): Hit | null {
   if (state.allTraced) return firstHit(state.index, origin, dir, maxDist);
   const len = Math.hypot(dir[0], dir[1], dir[2]);
   if (len === 0) return null;

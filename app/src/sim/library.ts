@@ -9,6 +9,9 @@ export type SurfaceTable = {
   furnishing: number;
   roomSurfaces: Map<number, [number, number, number]>; // keyed by room index: wall, floor, ceiling
   roomFurnishing: Map<number, number>; // keyed by room index
+  /** Library indexes of the closed-window and closed-door panel materials; absent: the MVP wall. */
+  glassIndex?: number;
+  doorIndex?: number;
 };
 
 /** What the tracer reads per hit: absorption with furnishing added and clamped, scattering with the floor applied. */
@@ -93,11 +96,26 @@ export function resolveSurfaces(state: SimState): void {
     surface[t] = slot[cls * (rooms + 1) + room[t] + 1];
   }
   state.surfaces = surfaces;
+
+  // Door and window panels: glass or door, with the furnishing of the opening's room.
+  if (state.panels) {
+    const roomIndex = new Map(state.roomIds.map((id, i) => [id, i]));
+    const { table, config } = state;
+    state.panels.surfaces = state.panels.openings.map(o => {
+      const index = o.kind === 'window' ? table.glassIndex : table.doorIndex;
+      const material = index === undefined ? config.materials.wall : table.library[index];
+      const furnishing = table.roomFurnishing.get(roomIndex.get(o.roomId) ?? -1) ?? table.furnishing;
+      return resolveSurface(material, furnishing, config);
+    });
+  }
 }
 
-/** The resolved surface of main-mesh triangle `t`. */
+/** The resolved surface of triangle `t`: a main-mesh triangle, or a panel triangle (numbered after the mesh's). */
 export function surfaceAt(state: SimState, t: number): ResolvedSurface {
-  return state.surfaces[state.surface[t]];
+  const main = state.surface.length;
+  if (t < main) return state.surfaces[state.surface[t]];
+  const p = state.panels!;
+  return p.surfaces[p.panelOf[t - main]];
 }
 
 function checkIndex(i: number, library: Material[], what: string): void {
@@ -136,7 +154,15 @@ export function applySetMaterials(state: SimState, msg: SetMaterials): void {
     const i = roomIndex.get(r.roomId);
     if (i !== undefined) roomFurnishing.set(i, r.value);
   }
-  state.table = { library: [...library], surfaces: [...msg.surfaces], furnishing: msg.furnishing, roomSurfaces, roomFurnishing };
+  state.table = {
+    library: [...library],
+    surfaces: [...msg.surfaces],
+    furnishing: msg.furnishing,
+    roomSurfaces,
+    roomFurnishing,
+    glassIndex: msg.glassIndex,
+    doorIndex: msg.doorIndex,
+  };
   state.lastSetMaterials = msg;
   resolveSurfaces(state);
 }
