@@ -81,8 +81,8 @@ input:focus-visible { outline: none; }
 .sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
 
 .notice, .hint, .demo-note { left: 50%; translate: -50% 0; }
-.notice { top: 18px; padding: 8px 16px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); box-shadow: var(--shadow); font: var(--t-meta); }
-.hint { top: 18px; padding: 8px 16px; border-radius: 99px; background: var(--sound); color: var(--sound-ink); font: var(--t-meta); font-weight: 600; box-shadow: var(--shadow); animation: rise var(--enter) var(--ease); }
+.notice { top: 76px; padding: 8px 16px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); box-shadow: var(--shadow); font: var(--t-meta); }
+.hint { top: 76px; padding: 8px 16px; border-radius: 99px; background: var(--sound); color: var(--sound-ink); font: var(--t-meta); font-weight: 600; box-shadow: var(--shadow); animation: rise var(--enter) var(--ease); }
 .hint kbd { font: var(--t-label); padding: 2px 6px; margin: 0 6px; border-radius: 5px; background: rgb(0 0 0 / 0.12); }
 .hint kbd:first-child { margin-left: 0; }
 .demo-note { top: 62px; padding: 3px 9px; border-radius: 99px; background: rgb(38 29 20 / 0.72); color: #f6f1e7; font: var(--t-label); letter-spacing: 0.01em; }
@@ -190,8 +190,10 @@ input:focus-visible { outline: none; }
 .chip { height: 30px; padding: 0 14px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--ink-2); font: var(--t-meta); font-weight: 600; box-shadow: var(--shadow); transition: color var(--fast), border-color var(--fast); }
 .chip:hover { color: var(--ink); border-color: var(--line-strong); }
 
-.chat-log { position: relative; max-height: min(320px, 42vh); overflow: auto; padding: 36px 14px 14px; display: grid; gap: 10px; animation: rise var(--enter) var(--ease); }
-.collapse { position: absolute; top: 4px; right: 6px; }
+.chat-log { position: relative; max-height: min(320px, 42vh); overflow: auto; padding: 0 14px 14px; display: grid; gap: 10px; animation: rise var(--enter) var(--ease); }
+.chat-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; margin: 0 -14px; padding: 6px 8px 6px 14px; background: var(--surface-solid); border-bottom: 1px solid var(--line); font: var(--t-meta); font-weight: 600; color: var(--ink-2); }
+.chat-reopen { justify-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-solid); color: var(--ink-2); font: var(--t-meta); font-weight: 600; box-shadow: var(--shadow); }
+.chat-reopen:hover { color: var(--ink); }
 .msg { margin: 0; max-width: 88%; padding: 8px 12px; border-radius: 12px; font: var(--t-body); }
 .msg.user { justify-self: end; background: var(--action); color: #fff; border-bottom-right-radius: 4px; }
 .msg.jev { justify-self: start; background: var(--raised); border-bottom-left-radius: 4px; }
@@ -327,6 +329,10 @@ button.process-line:hover { color: var(--ink-2); }
 .probe { position: absolute; left: 0; top: 0; pointer-events: none; }
 .probe-dot { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; padding: 0; border: 2px solid var(--ink); border-radius: 3px; background: var(--surface-solid); transform: rotate(45deg); pointer-events: auto; box-shadow: 0 2px 8px rgb(38 24 10 / 0.4); }
 .probe-card { position: absolute; left: 14px; top: -14px; min-width: 132px; padding: 6px 9px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); display: grid; gap: 2px; box-shadow: var(--shadow); }
+/* The reading shows for a few seconds after you drop the probe, then only while you hover its dot: it no longer sits over the view. */
+.probe-card { animation: probe-peek 5s forwards; pointer-events: none; }
+.probe-dot:hover + .probe-card, .probe-dot:focus-visible + .probe-card { animation: none; opacity: 1; visibility: visible; }
+@keyframes probe-peek { 0%, 85% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
 .probe-row { display: flex; align-items: center; gap: 6px; font: var(--t-meta); }
 .probe-row i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .probe-row span { color: var(--ink-2); flex: 1; white-space: nowrap; }
@@ -393,3 +399,23 @@ button.process-line:hover { color: var(--ink-2); }
 .msg-line { display: block; }
 .msg-line + .msg-line, .msg-line + .msg-list, .msg-list + .msg-line { margin-top: 6px; }
 .msg-list { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+
+/* ================= First-visit tour ================= */
+.tut-root { position: absolute; inset: 0; pointer-events: none; z-index: 60; }
+.tut-block { position: absolute; inset: 0; pointer-events: auto; }
+.tut-dim { position: absolute; inset: 0; background: rgb(20 14 8 / 0.7); animation: fade var(--enter) var(--ease); }
+.tut-spot { position: absolute; border-radius: 14px; box-shadow: 0 0 0 2px var(--surface-solid); pointer-events: none; transition: left 220ms var(--ease), top 220ms var(--ease), width 220ms var(--ease), height 220ms var(--ease); }
+.tut-card { box-sizing: border-box; position: absolute; z-index: 1; display: grid; gap: 8px; padding: 16px 16px 14px; border-radius: 14px; background: var(--surface-solid); border: 1px solid var(--line); box-shadow: 0 24px 48px -16px rgb(20 14 8 / 0.7); pointer-events: auto; animation: rise var(--enter) var(--ease); }
+.tut-card h3 { margin: 0; font: var(--t-title); color: var(--ink); }
+.tut-count { margin: 0; font: var(--t-label); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.tut-text { margin: 0; font: var(--t-body); color: var(--ink-2); }
+.tut-dots { display: flex; gap: 6px; margin: 10px 0 6px; }
+.tut-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.tut-dots i.on { background: var(--action); }
+.tut-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.tut-nav { display: flex; gap: 8px; }
+.tut-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.tut-list li { display: grid; grid-template-columns: 30px auto 1fr; align-items: center; column-gap: 10px; font: var(--t-meta); color: var(--ink-2); }
+.tut-list b { color: var(--ink); font-weight: 600; }
+.tut-ico { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--raised); color: var(--ink); }
+.tut-dimsvg { position: absolute; left: 0; top: 0; pointer-events: none; animation: fade var(--enter) var(--ease); }

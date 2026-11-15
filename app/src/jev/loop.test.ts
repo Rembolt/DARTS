@@ -154,6 +154,6 @@ describe('ask', () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ error: 'no key' }), { status: 503 }));
 
     const res = await ask('Hi', [], { store, actions, effects, fetch: fetchFn as unknown as typeof fetch });
-    expect(res.reply).toBe('Jev is not available right now. The settings panel can do the same things.');
+    expect(res.reply).toBe('The assistant is not available right now. The settings panel can do the same things.');
   });
 });

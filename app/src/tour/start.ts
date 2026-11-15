@@ -4,10 +4,11 @@ import { createModeSwitch } from '../blueprint/mode';
 import { bindShortcut, createToggle } from '../blueprint/toggle';
 import { createBlueprint } from '../blueprint/view';
 import { createAudioEngine, type AudioEngine, type SourceSpec } from '../audio/engine';
+import { loadSound } from '../audio/sounds';
 import { surroundingSources, surroundingsNotice } from '../audio/surroundings';
-import { createFootsteps, type Footsteps } from '../audio/footsteps';
+import { createFootsteps, FOOTSTEP_FILES, type Footsteps } from '../audio/footsteps';
 import { Reverb } from '../audio/reverb';
-import { BLUEPRINT, MAX_SOURCES, simConfig } from '../config';
+import { BLUEPRINT, MAX_SOURCES, simConfig, SOUNDS } from '../config';
 import { firstRoomId, isInside, TraceScheduler } from '../listen';
 import { formatSimReady, startSim, type SimClient } from '../sim/client';
 import { ReverbScheduler } from '../sim/reverb-cache';
@@ -251,8 +252,23 @@ export function startTour(modelId: string): void {
   }
 
   /** The sources that play now. Traced ones (not stereo) go to the worker; all go to the audio engine. */
+  // Sound starts at once because the sounds are already decoded: a suspended context is made ahead of the click (browsers allow
+  // that) and every file is fetched and decoded into it. The click only resumes it. A used context is closed, so a new one is made.
+  let warm: AudioContext | null = null;
+  function prewarm(): void {
+    if (typeof AudioContext === 'undefined') return;
+    try {
+      const ctx = (warm ??= new AudioContext()); // called again when the sources change: files already decoded are skipped
+      const files = new Set<string>([...FOOTSTEP_FILES, ...sourceSpecs.map(sp => SOUNDS[sp.sound]?.file).filter((f): f is string => !!f)]);
+      for (const file of files) void loadSound(ctx, file);
+    } catch {
+      warm = null; // the click will make one
+    }
+  }
+
   function applySourceSpecs(specs: SourceSpec[]): void {
     sourceSpecs = specs;
+    prewarm();
     sources = specs.filter(sp => sp.enabled && sp.kind !== 'stereo').slice(0, MAX_SOURCES).map(({ id, position }) => ({ id, position }));
     void pushSources();
     uiBridge.onSourcesInitialized(specs);
@@ -374,11 +390,13 @@ export function startTour(modelId: string): void {
       footsteps = null;
       showSteps();
       showAudio('off');
-      void old.stop();
+      void old.stop().then(prewarm);
       return;
     }
     showAudio('starting');
-    createAudioEngine()
+    const context = warm ?? undefined;
+    warm = null;
+    createAudioEngine({ context })
       .then(engine => {
         if (failed) {
           void engine.stop();

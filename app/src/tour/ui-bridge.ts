@@ -275,10 +275,14 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   commands.onSpeakersChanged = syncSpeakersToScene;
 
   let jevConvo: Convo = [];
+  let jevAbort: AbortController | null = null;
+  commands.stop = () => jevAbort?.abort();
   commands.ask = async (text, session) => {
     const step = session.step('Thinking');
+    const abort = (jevAbort = new AbortController());
     try {
       const res = await ask(text, jevConvo, {
+        signal: abort.signal,
         store: sceneStore,
         actions,
         effects,

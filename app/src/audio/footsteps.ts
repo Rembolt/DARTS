@@ -7,6 +7,9 @@ const STEP_SECONDS = 0.5;
 const MIN_STEPS = 2;
 const MAX_STEPS = 8;
 const VARIATIONS = 4;
+
+/** Every footstep file, so they can be decoded before the sound is switched on. */
+export const FOOTSTEP_FILES: string[] = (['hard', 'soft'] as const).flatMap(kind => Array.from({ length: VARIATIONS }, (_, i) => `/audio/footstep_${kind}_${i + 1}.ogg`));
 const STEP_DB = -18;
 const SEND_DB = -6;
 const PITCH_SPREAD = 0.05;

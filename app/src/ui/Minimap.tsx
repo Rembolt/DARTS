@@ -77,7 +77,7 @@ export function Minimap() {
     ctx.stroke();
   }, [heat]);
 
-  if (!heat) return null;
+  if (!heat || !ui.minimapShown.value) return null;
   const { grid } = heat;
   const px = SIZE / grid.w;
   const toMap = (x: number, z: number) => [((x - grid.x0) / grid.step) * px, ((z - grid.z0) / grid.step) * px] as const;

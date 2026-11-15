@@ -66,8 +66,8 @@ function loadFlag(name: string): boolean {
 }
 
 /** Show or hide a dock-toggled panel, and remember it. */
-export function setShown(name: 'room' | 'compass', on: boolean): void {
-  (name === 'room' ? ui.roomShown : ui.compassShown).value = on;
+export function setShown(name: 'room' | 'compass' | 'minimap', on: boolean): void {
+  (name === 'room' ? ui.roomShown : name === 'compass' ? ui.compassShown : ui.minimapShown).value = on;
   try {
     localStorage.setItem(`panel-shown-${name}`, String(on));
   } catch {
@@ -114,6 +114,7 @@ export const ui = {
   /** The room card and the sound compass can be hidden from the dock (they stay foldable too). Remembered. */
   roomShown: signal(loadFlag('room')),
   compassShown: signal(loadFlag('compass')),
+  minimapShown: signal(loadFlag('minimap')),
   /** The headphones screen has been passed. */
   started: signal(false),
   /** The last trace, for the sound compass. `positions` matches `sources` by index. */
@@ -158,6 +159,8 @@ export const commands = {
   onOpeningsChanged: (_openings: Opening[]) => {},
   /** The agent: report progress through `session` as it works. Replace with the Jev relay (v2-design.md 6). */
   ask: (async (_text: string, _session: AgentSession) => {}) as (text: string, session: AgentSession) => Promise<void>,
+  /** Stop whatever Jev is doing: the running request and any tool calls still queued. */
+  stop: () => {},
   /** Voice on or off. Hook up speech-to-text here; it should call `ui.listening.value = false` when it ends. */
   voice: (_on: boolean) => {},
 };

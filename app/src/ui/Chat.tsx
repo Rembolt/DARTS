@@ -1,6 +1,6 @@
 // The agent, as a bar at the bottom. It grows upward to show the conversation, the steps the agent took, and any
 // change it suggests, which only happens when the user applies it.
-import { ArrowUp, Check, ChevronDown, ChevronRight, Headphones, Loader2, Mic, MicOff, X } from 'lucide-preact';
+import { ArrowUp, Check, ChevronDown, ChevronRight, ChevronUp, Headphones, Loader2, Mic, MicOff, Square, X } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { plain, onKeyDown } from './keys';
 import { Orb, stateLabel } from './Orb';
@@ -68,7 +68,7 @@ function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['
       <button type="button" class="process-line done" onClick={() => setOpen(false)} aria-expanded="true">
         <Check size={13} strokeWidth={3} /> Checked {steps.length} {steps.length === 1 ? 'thing' : 'things'} <ChevronDown size={13} />
       </button>
-    <ol class="process" aria-label="What Jev did">
+    <ol class="process" aria-label="What the assistant did">
       {steps.map(st => (
         <li class={`step ${st.status}`}>
           <span class="step-icon">{st.status === 'run' ? <Loader2 size={13} class="spin" /> : st.status === 'done' ? <Check size={13} strokeWidth={3} /> : <X size={13} strokeWidth={3} />}</span>
@@ -84,7 +84,7 @@ function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['
 function Proposal({ m }: { m: Extract<ChatMessage, { kind: 'proposal' }> }) {
   return (
     <div class={`proposal is-${m.status}`}>
-      <p class="p-kicker">Jev suggests</p>
+      <p class="p-kicker">Suggestion</p>
       <h4>{m.title}</h4>
       <p class="p-detail">{m.detail}</p>
       <ul>
@@ -171,12 +171,20 @@ export function Chat() {
   }
 
   return (
-    <section class={`chat ${open || focused || text ? 'is-open' : ''}`} aria-label="Ask Jev">
+    <section class={`chat ${open || focused || text ? 'is-open' : ''}`} aria-label="Sound assistant">
+      {!open && messages.length > 0 && (
+        <button type="button" class="chat-reopen" onClick={() => (ui.chatOpen.value = true)}>
+          <ChevronUp size={14} /> Show conversation
+        </button>
+      )}
       {open && (
         <div class="card chat-log" ref={log} role="log" aria-live="polite">
-          <button type="button" class="icon-btn collapse" aria-label="Hide conversation" onClick={() => (ui.chatOpen.value = false)}>
-            <ChevronDown size={16} />
-          </button>
+          <div class="chat-head">
+            <span>Sound assistant</span>
+            <button type="button" class="icon-btn" aria-label="Hide conversation" title="Hide conversation" onClick={() => (ui.chatOpen.value = false)}>
+              <ChevronDown size={16} />
+            </button>
+          </div>
           {messages.map((m, idx) =>
             m.kind === 'text' ? (
               <div key={m.id} class={`msg ${m.role}`}>
@@ -213,9 +221,9 @@ export function Chat() {
           <input
             ref={input}
             value={text}
-            placeholder="Ask Jev"
+            placeholder="Ask, or say what to change"
             onBlur={() => setFocused(false)}
-            aria-label="Message Jev"
+            aria-label="Ask about the sound or say what to change"
             onInput={e => setText((e.currentTarget as HTMLInputElement).value)}
             onFocus={() => {
               setFocused(true);
@@ -229,12 +237,18 @@ export function Chat() {
           </p>
         )}
         {state === 'idle' && !focused && !text && <kbd class="slash">/</kbd>}
-        <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk to Jev'} title="Talk to Jev" onClick={toggleVoice}>
+        <button type="button" class={`mic ${ui.listening.value ? 'on' : ''}`} aria-pressed={ui.listening.value} aria-label={ui.listening.value ? 'Stop listening' : 'Talk instead of typing'} title="Talk instead of typing" onClick={toggleVoice}>
           {ui.listening.value ? <MicOff size={16} /> : <Mic size={16} />}
         </button>
-        <button type="submit" class="send" aria-label="Send" disabled={!text.trim() || ui.thinking.value}>
-          <ArrowUp size={16} strokeWidth={2.4} />
-        </button>
+        {ui.thinking.value ? (
+          <button type="button" class="send stop" aria-label="Stop" title="Stop" onClick={() => commands.stop()}>
+            <Square size={13} fill="currentColor" />
+          </button>
+        ) : (
+          <button type="submit" class="send" aria-label="Send" disabled={!text.trim()}>
+            <ArrowUp size={16} strokeWidth={2.4} />
+          </button>
+        )}
       </form>
     </section>
   );

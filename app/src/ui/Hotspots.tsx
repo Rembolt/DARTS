@@ -1,5 +1,6 @@
 // Controls that sit on the 3D view itself: doors and windows you can flip, and speaker pins. What is drawn, and how,
 // follows the rules in pins.ts (behind walls, distance, collisions).
+import { signal } from '@preact/signals';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Volume2, VolumeX } from 'lucide-preact';
 import { DoorIcon, WindowIcon } from './icons';
@@ -9,6 +10,11 @@ import { project, useCamera } from './project';
 import { heardOpenings, isOutdoorSource, previewedIds, removeProbe, toggleOpening, ui } from './store';
 import { PATHS_STYLE } from '../blueprint/paths';
 import { outdoorTrim } from './scenario';
+
+// Radix closes a tooltip the moment its button is pressed or clicked. For a door or window you want the status to stay while the
+// pointer is on it (and to flip to "Open" or "Closed" as you click), so those two tooltips are kept open until the pointer leaves.
+const hoveredPin = signal<string | null>(null);
+const heldPin = signal<string | null>(null);
 
 export function Hotspots() {
   const pose = ui.pose.value;
@@ -40,10 +46,22 @@ export function Hotspots() {
             const o = openings.get(pin.id)!;
             const verb = o.open ? 'Close' : 'Open';
             return (
-              <Tooltip.Root key={o.id}>
+              <Tooltip.Root
+                key={o.id}
+                open={hoveredPin.value === o.id || heldPin.value === o.id}
+                onOpenChange={next => {
+                  if (next) hoveredPin.value = o.id;
+                  else if (heldPin.value !== o.id && hoveredPin.value === o.id) hoveredPin.value = null;
+                }}
+              >
                 <Tooltip.Trigger asChild>
                   <button
                     type="button"
+                    onPointerDown={() => (heldPin.value = o.id)}
+                    onPointerLeave={() => {
+                      if (heldPin.value === o.id) heldPin.value = null;
+                      if (hoveredPin.value === o.id) hoveredPin.value = null;
+                    }}
                     class={`pin opening ${o.open ? 'is-open' : 'is-closed'} ${previewed.has(o.id) ? 'is-previewed' : ''}`}
                     style={style}
                     aria-label={`${verb} ${o.label}`}
@@ -106,7 +124,7 @@ export function Hotspots() {
           const names = new Map(ui.speakers.value.map((sp, i) => [sp.id, { label: sp.label, color: PATHS_STYLE.sourceColors[i % PATHS_STYLE.sourceColors.length] }]));
           return (
             <div key={p.id} class={`probe ${s.x > size.w - 420 ? 'flip' : ''}`} style={{ transform: `translate(${s.x}px, ${s.y}px)` }}>
-              <button type="button" class="probe-dot" aria-label="Remove probe" title="Remove probe" onClick={() => removeProbe(p.id)} />
+              <button type="button" class="probe-dot" aria-label="Remove probe" title="Hover to read it, click to remove" onClick={() => removeProbe(p.id)} />
               <div class="probe-card">
                 {p.readings === null ? (
                   <span class="fine">Measuring…</span>

@@ -17,9 +17,10 @@ export type MessageParam = {
 
 const MAX_REQUESTS = 8;
 const DEFAULT_SOUNDS = ['music', 'speech', 'traffic', 'piano', 'fan', 'tv'];
-const UNAVAILABLE_MSG = 'Jev is not available right now. The settings panel can do the same things.';
+const UNAVAILABLE_MSG = 'The assistant is not available right now. The settings panel can do the same things.';
 const REFUSAL_MSG = "I can't help with that request.";
 const LIMIT_MSG = "I couldn't finish that.";
+const STOPPED_MSG = 'Stopped.';
 
 export async function ask(
   text: string,
@@ -29,6 +30,8 @@ export async function ask(
     actions: Actions;
     effects: SceneEffects;
     fetch?: typeof fetch;
+    /** Aborting stops the turn: no more requests or tool calls, and the conversation goes back to how it was. */
+    signal?: AbortSignal;
     onStep?(text: string): void;
   },
 ): Promise<{ reply: string; convo: MessageParam[] }> {
@@ -40,7 +43,9 @@ export async function ask(
     { role: 'user', content: `${text}\n\nScene summary:\n${JSON.stringify(summary)}` },
   ];
 
+  const { signal } = deps;
   for (let i = 0; i < MAX_REQUESTS; i++) {
+    if (signal?.aborted) return { reply: STOPPED_MSG, convo };
     const scene = store.get();
     const soundSet = new Set([...DEFAULT_SOUNDS, ...scene.sources.map(s => s.sound)]);
     const tools = toolsFor(scene.permissions, {
@@ -55,11 +60,12 @@ export async function ask(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: nextConvo, tools }),
+        signal,
       });
       if (!res.ok) return { reply: UNAVAILABLE_MSG, convo };
       response = (await res.json()) as { stop_reason?: string; content?: ContentBlock[] };
     } catch {
-      return { reply: UNAVAILABLE_MSG, convo };
+      return { reply: signal?.aborted ? STOPPED_MSG : UNAVAILABLE_MSG, convo };
     }
 
     if (response.stop_reason === 'refusal') {
@@ -83,6 +89,7 @@ export async function ask(
 
     const results: ToolResultBlock[] = [];
     for (const call of toolUses) {
+      if (signal?.aborted) return { reply: STOPPED_MSG, convo };
       onStep?.(`Running ${call.name}…`);
       results.push(await execute(call, { store, actions, effects }));
     }

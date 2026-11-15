@@ -12,7 +12,7 @@ export function startJev(
   root.innerHTML = `
     <div class="jev-transcript" aria-live="polite" data-role="transcript"></div>
     <form class="jev-form" data-role="form">
-      <input type="text" placeholder="Ask Jev about the acoustics…" data-role="input" />
+      <input type="text" placeholder="Ask about the acoustics…" data-role="input" />
       <button type="submit" data-role="send">Send</button>
       <button type="button" data-role="mic">Mic (V)</button>
     </form>

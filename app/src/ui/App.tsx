@@ -10,17 +10,24 @@ import { Settings } from './Settings';
 import { WallBadges } from './WallBadges';
 import { SoundCompass } from './SoundCompass';
 import { SurfaceStrip } from './SurfaceStrip';
-import { StartScreen, startedBefore } from './StartScreen';
-import { ui } from './store';
+import { armAutoSound, StartScreen, startedBefore } from './StartScreen';
+import { Tutorial } from './Tutorial';
+import { commands, ui } from './store';
 
 ui.started.value = startedBefore();
 
 export function App() {
+  useEffect(() => {
+    // After a reload the headphones screen is skipped, so sound waits for the first click or key press.
+    const t = setTimeout(armAutoSound, 1500);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(
     () =>
       onKeyDown(e => {
         if (e.key !== 'Escape' || ui.placing.value) return; // placement mode takes Esc first (main.ts)
-        if (ui.selection.value) ui.selection.value = null;
+        if (ui.thinking.value) commands.stop();
+        else if (ui.selection.value) ui.selection.value = null;
         else if (ui.settingsOpen.value) ui.settingsOpen.value = false;
         else return;
         return true;
@@ -40,6 +47,7 @@ export function App() {
       <Settings />
       <Chat />
       <StartScreen />
+      <Tutorial />
       <Toaster
         position="top-center"
         offset={96}

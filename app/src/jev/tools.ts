@@ -92,7 +92,7 @@ export function toolsFor(
     level: { type: 'string', enum: FURNISHING_LEVELS },
     room: { type: ['string', 'null'] },
   });
-  add('set_opening', 'Open or close a window or door by id, or by room and type.', {
+  add('set_opening', 'Open or close windows or doors: one by id, or every one of a type in a room, or with id and room both null every one of that type in the whole house (use this for "close all the doors": one call, never one per opening).', {
     id: { type: ['string', 'null'] },
     room: { type: ['string', 'null'] },
     type: { anyOf: [{ type: 'string', enum: openingTypes }, { type: 'null' }] },

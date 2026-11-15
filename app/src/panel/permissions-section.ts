@@ -32,7 +32,7 @@ export function createPermissionsSection(deps: {
   el.className = 'panel-section';
   el.dataset.section = 'permissions';
   el.innerHTML = `
-    <h3>Permissions (Jev)</h3>
+    <h3>Permissions (assistant)</h3>
     <div data-role="perm-rows"></div>
   `;
 

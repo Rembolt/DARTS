@@ -4,7 +4,7 @@ import { agentState } from './store';
 export function Orb() {
   const state = agentState();
   return (
-    <span class={`bars is-${state}`} role="img" aria-label={`Jev is ${state === 'idle' ? 'ready' : state}`}>
+    <span class={`bars is-${state}`} role="img" aria-label={`Assistant is ${state === 'idle' ? 'ready' : state}`}>
       <i />
       <i />
       <i />

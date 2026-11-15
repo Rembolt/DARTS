@@ -169,8 +169,8 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
       const type = a.type ?? 'all';
       if (!['window', 'door', 'all'].includes(type)) return fail(`Unknown opening type: ${String(type)}.`);
       let room: RoomInfo | undefined;
-      if (a.id === undefined) {
-        if (a.room === undefined) return fail('Give an opening id, or a room and a type.');
+      // No id and no room: the whole house in one go ("close all the doors"), one trace instead of one per opening.
+      if (a.id === undefined && a.room !== undefined) {
         room = findRoom(a.room);
         if (!room) return fail(`Unknown room: ${a.room}.`);
       }
@@ -190,10 +190,10 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
         if (o.meshClosed) return fail(`Opening ${a.id} is already closed in the scan, so it can't be changed.`);
         targets = [o];
       } else {
-        targets = openings.filter(o => o.roomId === room!.id && !o.meshClosed && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
+        targets = openings.filter(o => (!room || o.roomId === room.id) && !o.meshClosed && (type === 'all' ? o.kind === 'window' || o.kind === 'door' : o.kind === type));
         if (targets.length === 0) {
           const what = type === 'window' ? 'windows' : type === 'door' ? 'doors' : 'windows or doors';
-          return fail(`No ${what} to change in ${room!.name}.`);
+          return fail(room ? `No ${what} to change in ${room.name}.` : `No ${what} to change.`);
         }
       }
       const scene = store.get();

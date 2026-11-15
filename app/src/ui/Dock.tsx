@@ -1,6 +1,7 @@
 // Top bar: where we are on the left, view and sound controls on the right.
-import { ArrowLeft, AudioWaveform, Box, Compass, DoorOpen, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
+import { ArrowLeft, CircleHelp, AudioWaveform, Box, Compass, DoorOpen, Map as MapIcon, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
 import { FRONT_URL } from '../route';
+import { startTutorial } from './Tutorial';
 import { alternative, commands, setShown, ui } from './store';
 
 /** What the status line says to a person, not the raw log text. */
@@ -32,10 +33,10 @@ export function Dock() {
       )}
 
       <div class="dock card" role="toolbar" aria-label="View and sound">
-        <a class="tool ghost back-link" href={FRONT_URL} title="Back to search">
+        <a data-tour="back" class="tool ghost back-link" href={FRONT_URL} title="Back to search">
           <ArrowLeft size={16} /> <span class="lbl">Back</span>
         </a>
-        <button type="button" class={`tool ${bp.on ? 'on' : ''}`} disabled={!bp.enabled} aria-pressed={bp.on} title="Show the house outline (B)" onClick={() => commands.toggleBlueprint()}>
+        <button type="button" data-tour="blueprint" class={`tool ${bp.on ? 'on' : ''}`} disabled={!bp.enabled} aria-pressed={bp.on} title="Show the house outline (B)" onClick={() => commands.toggleBlueprint()}>
           <Layers size={16} /> <span class="lbl">Blueprint</span>
         </button>
         {bp.on && (
@@ -51,6 +52,7 @@ export function Dock() {
         <span class="sep" />
         <button
           type="button"
+          data-tour="speaker"
           class={`tool ${placing && kind === 'speaker' ? 'on accent' : ''}`}
           aria-pressed={placing && kind === 'speaker'}
           title="Add a speaker (S)"
@@ -61,15 +63,28 @@ export function Dock() {
         </button>
         <button
           type="button"
+          data-tour="probe"
           class={`tool ${placing && kind === 'probe' ? 'on accent' : ''}`}
           aria-pressed={placing && kind === 'probe'}
-          title="Drop a listening probe (L)"
+          title="Drop a listening probe: click where you want to listen"
           onClick={() => place('probe')}
         >
           {placing && kind === 'probe' ? <X size={16} /> : <Crosshair size={16} />} <span class="lbl">{placing && kind === 'probe' ? 'Cancel' : 'Probe'}</span>
         </button>
         <button
           type="button"
+          data-tour="noise"
+          class={`tool ${ui.minimapShown.value ? 'on' : ''}`}
+          aria-pressed={ui.minimapShown.value}
+          disabled={!ui.heat.value}
+          title={ui.heat.value ? 'Show or hide the street noise map' : 'Not available yet: it needs a sound source outside this house, and none was found'}
+          onClick={() => setShown('minimap', !ui.minimapShown.value)}
+        >
+          <MapIcon size={16} /> <span class="lbl">Noise</span>
+        </button>
+        <button
+          type="button"
+          data-tour="room"
           class={`tool ${ui.roomShown.value ? 'on' : ''}`}
           aria-pressed={ui.roomShown.value}
           title="Show or hide the room card"
@@ -79,6 +94,7 @@ export function Dock() {
         </button>
         <button
           type="button"
+          data-tour="compass"
           class={`tool ${ui.compassShown.value ? 'on' : ''}`}
           aria-pressed={ui.compassShown.value}
           title="Show or hide the sound around you"
@@ -88,6 +104,7 @@ export function Dock() {
         </button>
         <button
           type="button"
+          data-tour="settings"
           class={`tool ${ui.settingsOpen.value ? 'on' : ''}`}
           aria-pressed={ui.settingsOpen.value}
           title="Settings: materials, furnishing, quality"
@@ -97,6 +114,7 @@ export function Dock() {
         </button>
         <button
           type="button"
+          data-tour="sound"
           class={`tool ${audio === 'on' ? 'on' : ''}`}
           disabled={audio === 'starting'}
           aria-pressed={audio === 'on'}
@@ -104,6 +122,9 @@ export function Dock() {
         >
           {audio === 'on' ? <Volume2 size={16} /> : <VolumeX size={16} />}
           <span class="lbl">{audio === 'on' ? 'Sound on' : audio === 'starting' ? 'Starting…' : 'Start sound'}</span>
+        </button>
+        <button type="button" data-tour="help" class="tool ghost" aria-label="Help: show the tour again" title="Help: show the tour again" onClick={() => startTutorial()}>
+          <CircleHelp size={16} />
         </button>
       </div>
 
