@@ -25,8 +25,8 @@ it.skipIf(!existsSync(MESH_PATH))('traces the demo mesh with the design settings
 
   const down = firstHit(state.index, LISTENER, [0, -1, 0])!;
   const up = firstHit(state.index, LISTENER, [0, 1, 0])!;
-  expect(state.materials[down.triangle]).toBe(MATERIAL_IDS.floor);
-  expect(state.materials[up.triangle]).toBe(MATERIAL_IDS.ceiling);
+  expect(state.surfaceClass[down.triangle]).toBe(MATERIAL_IDS.floor);
+  expect(state.surfaceClass[up.triangle]).toBe(MATERIAL_IDS.ceiling);
   expect(down.distance).toBeGreaterThan(1);
   expect(down.distance).toBeLessThan(2);
 

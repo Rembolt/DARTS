@@ -13,6 +13,15 @@ const WELD = 1000; // positions closer than 1 mm count as one point
  * A zero-area triangle has no facing, so an edge it shares is treated as flat, not as a fold.
  */
 export function extractLines(mesh: Mesh, angleDeg: number, normals: Float32Array = faceNormals(mesh)): Float32Array {
+  return extractLinesTagged(mesh, angleDeg, normals).lines;
+}
+
+/** `extractLines`, plus for each line the triangle it came from (the first triangle found on that edge). */
+export function extractLinesTagged(
+  mesh: Mesh,
+  angleDeg: number,
+  normals: Float32Array = faceNormals(mesh),
+): { lines: Float32Array; triangles: Uint32Array } {
   const { positions: p, indices } = mesh;
   const triangleCount = indices.length / 3;
 
@@ -75,6 +84,7 @@ export function extractLines(mesh: Mesh, angleDeg: number, normals: Float32Array
 
   const cosLimit = Math.cos((angleDeg * Math.PI) / 180);
   const out = new Float32Array(edgeCount * 6);
+  const from = new Uint32Array(edgeCount);
   let written = 0;
   for (let e = 0; e < edgeCount; e++) {
     let keep = count[e] !== 2;
@@ -90,6 +100,7 @@ export function extractLines(mesh: Mesh, angleDeg: number, normals: Float32Array
     }
     if (keep) {
       const a = 3 * v0[e], b = 3 * v1[e];
+      from[written / 6] = t0[e];
       out[written++] = p[a];
       out[written++] = p[a + 1];
       out[written++] = p[a + 2];
@@ -98,5 +109,5 @@ export function extractLines(mesh: Mesh, angleDeg: number, normals: Float32Array
       out[written++] = p[b + 2];
     }
   }
-  return out.slice(0, written);
+  return { lines: out.slice(0, written), triangles: from.slice(0, written / 6) };
 }

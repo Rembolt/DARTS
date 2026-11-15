@@ -1,10 +1,10 @@
 // Every surface crossed along a straight segment, merged into walls (mvp-design.md 5.2 steps 2 and 3).
 import { DoubleSide, Ray } from 'three';
+import { firstTracedHit, isTraced } from './layers';
+import { surfaceAt } from './library';
+import { panelHits } from './openings';
 import type { SimState } from './load';
 import type { Bands, Vec3 } from './types';
-
-/** Material ids index this list (the key order of `SimConfig['materials']`, as in `MATERIAL_IDS`). */
-const MATERIAL_KEYS = ['wall', 'floor', 'ceiling'] as const;
 
 export type Crossing = { walls: number; transmission: Bands };
 
@@ -13,11 +13,14 @@ const ray = new Ray();
 /**
  * Walls crossed between `from` and `to`, and the strength left per band after them.
  *
- * - Every triangle hit along the segment counts, from either side (the index is traced `DoubleSide`).
+ * - Every triangle hit along the segment counts, from either side (the index is traced `DoubleSide`), except
+ *   triangles of untraced layers (`setLayers`). Closed door and window panels count too: a panel's two faces
+ *   merge into one wall, with the panel's material.
  * - Crossings are grouped into walls: a crossing joins the current wall while it is closer than `wallMergeDistance`
  *   to that wall's FIRST crossing. Measuring from the first crossing (not the previous one) keeps a run of bumpy
  *   scan triangles from chaining into one endless "wall" across a room.
- * - A wall's blocking, per band, is the largest blocking of the materials in its group (a floor slab seen as a floor
+ * - A wall's blocking, per band, is the largest blocking of the materials in its group (each triangle's material
+ *   from the library, `surfaceAt`) (a floor slab seen as a floor
  *   face plus a ceiling face blocks like the floor). Each wall multiplies by `10^(−blocking × transmissionScale / 10)`.
  * - Returns null as soon as more than `maxWalls` walls are found (the caller skips the leg). With `maxWalls` 0 it
  *   only asks for the nearest hit.
@@ -31,19 +34,23 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   ray.direction.set(dx / length, dy / length, dz / length);
   if (maxWalls === 0) {
     // Only a clear segment passes: the nearest hit is enough, and much cheaper than collecting all of them.
-    return state.index.bvh.raycastFirst(ray, DoubleSide, 0, length) ? null : { walls: 0, transmission };
+    return firstTracedHit(state, from, [dx, dy, dz], length) ? null : { walls: 0, transmission };
   }
-  const hits = state.index.bvh.raycast(ray, DoubleSide, 0, length);
+  const hits: { distance: number; triangle: number }[] = [];
+  for (const h of state.index.bvh.raycast(ray, DoubleSide, 0, length)) {
+    if (h.faceIndex != null && isTraced(state, h.faceIndex)) hits.push({ distance: h.distance, triangle: h.faceIndex });
+  }
+  hits.push(...panelHits(state, from, [dx, dy, dz], length));
   if (hits.length === 0) return { walls: 0, transmission };
   const distances = new Float64Array(hits.length);
   const triangles = new Int32Array(hits.length);
   const order = hits.map((_, i) => i).sort((a, b) => hits[a].distance - hits[b].distance);
   order.forEach((h, i) => {
     distances[i] = hits[h].distance;
-    triangles[i] = hits[h].faceIndex ?? -1;
+    triangles[i] = hits[h].triangle;
   });
 
-  const { config, materials } = state;
+  const { config } = state;
   const scale = config.transmissionScale / 10;
   let walls = 0;
   let i = 0;
@@ -51,8 +58,7 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
     const start = distances[i];
     const blocking: Bands = [0, 0, 0];
     for (; i < distances.length && distances[i] - start < config.wallMergeDistance; i++) {
-      if (triangles[i] < 0) continue;
-      const db = config.materials[MATERIAL_KEYS[materials[triangles[i]]]].blockingDb;
+      const db = surfaceAt(state, triangles[i]).blockingDb;
       for (let k = 0; k < 3; k++) if (db[k] > blocking[k]) blocking[k] = db[k];
     }
     walls++;
@@ -61,5 +67,3 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   }
   return { walls, transmission };
 }
-
-export { MATERIAL_KEYS };

@@ -45,7 +45,7 @@ function materialsByFace(state: ReturnType<typeof loadSim>['state']) {
   for (let t = 0; t < indices.length / 3; t++) {
     const ys = [0, 1, 2].map(k => p[indices[3 * t + k] * 3 + 1]);
     const face = ys.every(y => y === 0) ? 'bottom' : ys.every(y => y === 1) ? 'top' : 'side';
-    out[face].push(state.materials[t]);
+    out[face].push(state.surfaceClass[t]);
   }
   return out;
 }
@@ -77,17 +77,17 @@ it('numbers materials like the ray index: a ray straight down from inside hits a
   const { state } = loadSim(bytes(boxObj(true)), simConfig());
   const hit = firstHit(state.index, [0.3, 0.5, -0.6], [0, -1, 0]);
   expect(hit).not.toBeNull();
-  expect(state.materials[hit!.triangle]).toBe(MATERIAL_IDS.floor);
+  expect(state.surfaceClass[hit!.triangle]).toBe(MATERIAL_IDS.floor);
   const up = firstHit(state.index, [0.3, 0.5, -0.6], [0, 1, 0]);
-  expect(state.materials[up!.triangle]).toBe(MATERIAL_IDS.ceiling);
+  expect(state.surfaceClass[up!.triangle]).toBe(MATERIAL_IDS.ceiling);
 });
 
 it('sends a copy of the triangles and their materials for the solid blueprint, keeping its own for tracing', () => {
   const { state, ready } = loadSim(bytes(boxObj(true)), simConfig());
   expect(Array.from(ready.mesh.positions)).toEqual(Array.from(state.mesh.positions));
   expect(Array.from(ready.mesh.indices)).toEqual(Array.from(state.mesh.indices));
-  expect(Array.from(ready.mesh.materials)).toEqual(Array.from(state.materials));
+  expect(Array.from(ready.mesh.materials)).toEqual(Array.from(state.surfaceClass));
   expect(ready.mesh.positions.buffer).not.toBe(state.mesh.positions.buffer);
   expect(ready.mesh.indices.buffer).not.toBe(state.mesh.indices.buffer);
-  expect(ready.mesh.materials.buffer).not.toBe(state.materials.buffer);
+  expect(ready.mesh.materials.buffer).not.toBe(state.surfaceClass.buffer);
 });

@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { parseObj } from './obj';
+import { groupLayer, parseObj } from './obj';
 
 const bytes = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
 
@@ -34,4 +34,28 @@ it('rejects a vertex with a missing coordinate instead of reading it as 0', () =
 it('rejects a vertex that is not a number', () => {
   expect(() => parseObj(bytes('v 1 2 nan\n'))).toThrow('Vertex is not three numbers: "v 1 2 nan"');
   expect(() => parseObj(bytes('v 1 2 Infinity\n'))).toThrow('Vertex is not three numbers');
+});
+
+it('reads groups and keeps ungrouped faces as house', () => {
+  const mesh = parseObj(bytes('v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 2 3\ng type002\nf 1 2 4\ng type003\nf 2 3 4\ng type002\nf 1 3 4\ng\nf 1 2 3\n'));
+  expect(mesh.groups).toEqual(['house', 'type002', 'type003']);
+  expect(Array.from(mesh.triangleGroup)).toEqual([0, 1, 2, 1, 0]);
+});
+
+it('gives every triangle of a split polygon its group', () => {
+  const mesh = parseObj(bytes('v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\ng walls\nf 1 2 3 4\n'));
+  expect(mesh.groups).toEqual(['house', 'walls']);
+  expect(Array.from(mesh.triangleGroup)).toEqual([1, 1]);
+});
+
+it('puts Matterport group names into layers by their type code', () => {
+  expect(groupLayer('chunk001_group000_sub002_type002')).toBe('type002');
+  expect(groupLayer('chunk012_group000_sub002_filled001_type002')).toBe('type002');
+  expect(groupLayer('chunk000_group000_sub002')).toBe('house');
+  expect(groupLayer('mirror004_group000_sub002')).toBe('house');
+  expect(groupLayer('window008_group000_sub002')).toBe('house');
+  expect(groupLayer('type007')).toBe('type007');
+  const mesh = parseObj(bytes('v 0 0 0\nv 1 0 0\nv 0 1 0\ng chunk000_group000_sub002\nf 1 2 3\ng chunk001_group000_sub002_type002\nf 1 2 3\ng chunk012_group000_sub002_filled001_type002\nf 1 2 3\n'));
+  expect(mesh.groups).toEqual(['house', 'type002']);
+  expect(Array.from(mesh.triangleGroup)).toEqual([0, 1, 1]);
 });
