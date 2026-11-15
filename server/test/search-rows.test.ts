@@ -77,6 +77,9 @@ describe('homeRow', () => {
     expect(row.price).toBeNull();
     expect(row.facts).toContain('for rent');
   });
+  it('treats a placeholder price of a few dollars as not listed', () => {
+    expect(homeRow({ ...HOME, currentPrice: 1 }, ENUMS)!.price).toBeNull();
+  });
   it('carries the list date for merging', () => {
     expect((homeRow(HOME, ENUMS) as IndexRow & { listDate?: string }).listDate).toBe('2024-08-17T00:00:00+00:00');
   });

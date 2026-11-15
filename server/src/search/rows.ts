@@ -14,6 +14,8 @@ const MATTERPORT_REFERENCE_TYPES = new Set([36, 234]); // MatterportScan, Matter
 const FOR_RENT = 2; // TransactionType ForRent: currentPrice is a monthly rent
 const CONSTRUCTION_COMPLETE = 2; // ConstructionEventType
 const MASONRY = 1; // BuildingConstructionMaterialType
+/** About 50 home tours carry a price of $1, a placeholder; no real sale price is that low (the next is $47,000). */
+const MIN_REAL_PRICE = 1000;
 
 const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value);
 const obj = (value: unknown): Obj => (isObj(value) ? value : {});
@@ -24,6 +26,11 @@ const positive = (value: unknown): number | null => {
   const n = num(value);
   return n !== null && n > 0 ? n : null;
 };
+
+function salePrice(value: unknown): number | null {
+  const n = num(value);
+  return n !== null && n >= MIN_REAL_PRICE ? n : null;
+}
 
 function decode(enums: Enums, name: string, value: unknown): string | null {
   const n = num(value);
@@ -89,7 +96,7 @@ export function homeRow(record: unknown, enums: Enums, modelId?: string): DatedR
     beds: positive(property.bedsMin),
     baths: positive(property.bathsMin),
     // A rental's price is a monthly rent; it must never pass a sale-price limit, so it is left unlisted.
-    price: forRent ? null : positive(r.currentPrice),
+    price: forRent ? null : salePrice(r.currentPrice),
     yearBuilt: positive(structure.yearBuilt) ?? positive(property.yearBuilt),
     stories: positive(structure.stories),
     facts,
