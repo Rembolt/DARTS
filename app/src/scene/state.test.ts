@@ -26,7 +26,7 @@ describe('defaultScene', () => {
 
   it('sets the default permissions', () => {
     const p = defaultScene('x'.repeat(11)).permissions;
-    expect(p.put).toEqual({ furnishing: true, windows: true, doors: true, speakers: true, userLocation: false });
+    expect(p.put).toEqual({ furnishing: true, windows: true, doors: true, speakers: true, userLocation: true });
     expect(Object.values(p.get).every(Boolean)).toBe(true);
     expect(p.putMaterial.tile).toBe(true);
     expect(Object.keys(p.putMaterial)).toEqual(Object.keys(MATERIALS));

@@ -10,6 +10,8 @@ export function Inspector({ anchor }: { anchor: PinOut | null }) {
   const sel = ui.selection.value;
   const sp = sel?.kind === 'speaker' ? ui.speakers.value.find(s => s.id === sel.id) : undefined;
   const open = !!sp;
+  // Outside sources (planes, the road, the area loop) are not in the library: list the current one so the select is never empty.
+  const soundOptions = sp && !SOUND_LIBRARY.some(l => l.id === sp.sound) ? [{ id: sp.sound, label: sp.label, kind: sp.kind, levelDb: sp.levelDb }, ...SOUND_LIBRARY] : SOUND_LIBRARY;
   // When the pin is off screen the card stays, anchored to the right edge.
   const size = ui.stage.value;
   const x = anchor ? anchor.x : size.w - 40;
@@ -48,7 +50,8 @@ export function Inspector({ anchor }: { anchor: PinOut | null }) {
               <Select.Root
                 value={sp.sound}
                 onValueChange={v => {
-                  const lib = SOUND_LIBRARY.find(x => x.id === v)!;
+                  const lib = soundOptions.find(x => x.id === v);
+                  if (!lib) return;
                   updateSpeaker(sp.id, { sound: lib.id, kind: lib.kind, levelDb: lib.levelDb });
                 }}
               >
@@ -61,7 +64,7 @@ export function Inspector({ anchor }: { anchor: PinOut | null }) {
                 <Select.Portal>
                   <Select.Content class="card menu" position="popper" sideOffset={6}>
                     <Select.Viewport>
-                      {SOUND_LIBRARY.map(l => (
+                      {soundOptions.map(l => (
                         <Select.Item key={l.id} value={l.id} class="menu-item">
                           <Select.ItemText>{l.label}</Select.ItemText>
                           <span class="menu-meta">{l.kind === 'point' ? 'Inside' : 'Outside'}</span>

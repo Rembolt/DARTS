@@ -26,7 +26,8 @@ export type SceneEffects = {
   sourcesChanged(scene: SceneState): Promise<void>; // engine.setSources + source positions for traces
   clearReverb(): void;
   retrace(): void;
-  moveUserTo(roomId: string): Promise<void>;
+  /** Resolves to where the user really landed when that is known: a small room may have no viewpoint of its own. */
+  moveUserTo(roomId: string): Promise<{ arrivedIn: string; exact: boolean } | void>;
   measure(at: { point?: Vec3; roomId?: string }): Promise<Measurement>;
   current(): Measurement | null; // the latest trace and cached reverb; no new work
   rooms(): RoomInfo[]; openings(): OpeningInfo[]; layers(): { id: string; triangles: number }[];
@@ -259,12 +260,14 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
       const before = effects.current();
       const room = findRoom(a.room);
       if (!room) return fail(`Unknown room: ${a.room}.`);
+      let landed: { arrivedIn: string; exact: boolean } | void;
       try {
-        await effects.moveUserTo(room.id);
+        landed = await effects.moveUserTo(room.id);
       } catch (e) {
         return fail(`I couldn't move you to ${room.name}: ${message(e)}`);
       }
-      return finish({ room: room.id }, before);
+      // Tell the truth about where the user is: the closest viewpoint can sit in the next room.
+      return finish(landed && !landed.exact ? { room: room.id, arrivedIn: landed.arrivedIn, note: `${room.name} has no viewpoint of its own; the user is now in ${landed.arrivedIn}, as close as the tour allows. Say so.` } : { room: room.id }, before);
     },
 
     async setMeshLayer(a) {

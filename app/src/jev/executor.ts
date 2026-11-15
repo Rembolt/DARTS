@@ -242,6 +242,8 @@ export async function execute(
         return errResult(call.id, `Unknown tool: ${call.name}`);
     }
   } catch (err) {
-    return errResult(call.id, err instanceof Error ? err.message : String(err));
+    // The details are for the console. The assistant gets a plain line so it cannot read a stack or a code out loud.
+    console.error('[jev] tool failed:', call.name, err);
+    return errResult(call.id, 'That did not work. Tell the user in one short sentence that you could not do it, and nothing else.');
   }
 }

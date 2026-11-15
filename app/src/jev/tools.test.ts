@@ -44,7 +44,7 @@ describe('toolsFor', () => {
     const scene = defaultScene('Ki9YdfpNKum');
     const tools = toolsFor(scene.permissions, { sounds: ['music'], rooms: ['Kitchen'], layers: ['type002'] });
     const names = tools.map(t => t.name);
-    expect(names).not.toContain('move_user_to');
+    expect(names).toContain('move_user_to'); // on by default so "take me to the kitchen" works in a demo
     expect(names).not.toContain('set_mesh_layer');
     expect(names).toContain('set_material');
     expect(names).toContain('set_opening');
