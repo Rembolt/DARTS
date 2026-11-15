@@ -9,6 +9,35 @@ import { heardDb, outdoorTrim } from './scenario';
 import { agentState, commands, createSession, isOutdoorSource, pushChat, resolveProposal, ui, type ChatMessage } from './store';
 
 /** One suggestion from the numbers, or nothing. Never a generic list. */
+/** Render **bold** in a message as <strong> without touching innerHTML. */
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') && part.length > 4 ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
+  );
+}
+
+const CONFIRM = '[[confirm]]';
+
+/** Replies: lines starting with "- " become a bullet list, other lines stay paragraphs. **bold** works in both. */
+function renderBlocks(text: string) {
+  const out: preact.ComponentChildren[] = [];
+  let bullets: string[] = [];
+  const flush = () => {
+    if (bullets.length) out.push(<ul class="msg-list">{bullets.map(b => <li>{renderInline(b)}</li>)}</ul>);
+    bullets = [];
+  };
+  for (const line of text.split('\n')) {
+    const m = /^\s*[-•*]\s+(.*)$/.exec(line);
+    if (m) bullets.push(m[1]);
+    else {
+      flush();
+      if (line.trim()) out.push(<span class="msg-line">{renderInline(line)}</span>);
+    }
+  }
+  flush();
+  return out;
+}
+
 function contextHint(): { text: string; ask: string } | null {
   const sound = ui.sound.value;
   const outdoor = sound?.sources.find(s => isOutdoorSource(s.id));
@@ -31,10 +60,14 @@ function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['
   if (!open)
     return (
       <button type="button" class="process-line done" onClick={() => setOpen(true)} aria-expanded="false">
-        <Check size={13} strokeWidth={3} /> Checked {steps.length} things <ChevronRight size={13} />
+        <Check size={13} strokeWidth={3} /> Checked {steps.length} {steps.length === 1 ? 'thing' : 'things'} <ChevronRight size={13} />
       </button>
     );
   return (
+    <div class="process-wrap">
+      <button type="button" class="process-line done" onClick={() => setOpen(false)} aria-expanded="true">
+        <Check size={13} strokeWidth={3} /> Checked {steps.length} {steps.length === 1 ? 'thing' : 'things'} <ChevronDown size={13} />
+      </button>
     <ol class="process" aria-label="What Jev did">
       {steps.map(st => (
         <li class={`step ${st.status}`}>
@@ -44,6 +77,7 @@ function Process({ steps }: { steps: Extract<ChatMessage, { kind: 'process' }>['
         </li>
       ))}
     </ol>
+    </div>
   );
 }
 
@@ -143,11 +177,17 @@ export function Chat() {
           <button type="button" class="icon-btn collapse" aria-label="Hide conversation" onClick={() => (ui.chatOpen.value = false)}>
             <ChevronDown size={16} />
           </button>
-          {messages.map(m =>
+          {messages.map((m, idx) =>
             m.kind === 'text' ? (
-              <p key={m.id} class={`msg ${m.role}`}>
-                {m.text}
-              </p>
+              <div key={m.id} class={`msg ${m.role}`}>
+                {renderBlocks(m.text.replace(CONFIRM, '').trim())}
+                {m.role === 'jev' && m.text.includes(CONFIRM) && idx === messages.length - 1 && !ui.thinking.value && (
+                  <span class="confirm-actions">
+                    <button type="button" class="btn primary" onClick={() => void send('Yes, go ahead.')}>Yes</button>
+                    <button type="button" class="btn quiet" onClick={() => void send('No, leave it as it is.')}>No</button>
+                  </span>
+                )}
+              </div>
             ) : m.kind === 'process' ? (
               <Process key={m.id} steps={m.steps} />
             ) : (
@@ -185,7 +225,7 @@ export function Chat() {
           />
         ) : (
           <p class="state-line" role="status">
-            {stateLabel()}
+            {state === 'listening' && ui.liveText.value ? `“${ui.liveText.value.length > 70 ? `…${ui.liveText.value.slice(-70)}` : ui.liveText.value}”` : stateLabel()}
           </p>
         )}
         {state === 'idle' && !focused && !text && <kbd class="slash">/</kbd>}

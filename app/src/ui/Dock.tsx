@@ -1,6 +1,7 @@
 // Top bar: where we are on the left, view and sound controls on the right.
-import { AudioWaveform, Box, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
-import { alternative, commands, ui } from './store';
+import { ArrowLeft, AudioWaveform, Box, Compass, DoorOpen, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
+import { FRONT_URL } from '../route';
+import { alternative, commands, setShown, ui } from './store';
 
 /** What the status line says to a person, not the raw log text. */
 function statusText(raw: string): string {
@@ -31,6 +32,9 @@ export function Dock() {
       )}
 
       <div class="dock card" role="toolbar" aria-label="View and sound">
+        <a class="tool ghost back-link" href={FRONT_URL} title="Back to search">
+          <ArrowLeft size={16} /> <span class="lbl">Back</span>
+        </a>
         <button type="button" class={`tool ${bp.on ? 'on' : ''}`} disabled={!bp.enabled} aria-pressed={bp.on} title="Show the house outline (B)" onClick={() => commands.toggleBlueprint()}>
           <Layers size={16} /> <span class="lbl">Blueprint</span>
         </button>
@@ -63,6 +67,24 @@ export function Dock() {
           onClick={() => place('probe')}
         >
           {placing && kind === 'probe' ? <X size={16} /> : <Crosshair size={16} />} <span class="lbl">{placing && kind === 'probe' ? 'Cancel' : 'Probe'}</span>
+        </button>
+        <button
+          type="button"
+          class={`tool ${ui.roomShown.value ? 'on' : ''}`}
+          aria-pressed={ui.roomShown.value}
+          title="Show or hide the room card"
+          onClick={() => setShown('room', !ui.roomShown.value)}
+        >
+          <DoorOpen size={16} /> <span class="lbl">Room</span>
+        </button>
+        <button
+          type="button"
+          class={`tool ${ui.compassShown.value ? 'on' : ''}`}
+          aria-pressed={ui.compassShown.value}
+          title="Show or hide the sound around you"
+          onClick={() => setShown('compass', !ui.compassShown.value)}
+        >
+          <Compass size={16} /> <span class="lbl">Sound</span>
         </button>
         <button
           type="button"

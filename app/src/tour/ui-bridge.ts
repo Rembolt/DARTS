@@ -7,7 +7,7 @@ import { PATHS_STYLE } from '../blueprint/paths';
 import type { Blueprint } from '../blueprint/view';
 import { SOUNDS, type SoundId } from '../config';
 import { ask } from '../jev/loop';
-import { browserRecognition, pushToTalk } from '../jev/voice';
+import { createRecorder } from '../voice/whisper';
 import { createActions, type Measurement, type OpeningInfo, type RoomInfo, type SceneEffects } from '../scene/actions';
 import { setMaterialsMessage } from '../scene/materials';
 import { defaultScene, isMaterialName, QUALITY as SCENE_QUALITY, type MaterialDefaults, type SceneState } from '../scene/state';
@@ -77,6 +77,11 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   let meshLayers: { id: string; triangles: number }[] = [];
   let roomsTagged = false;
   let openingsLoaded = false;
+  let openingGeoms: OpeningGeom[] = [];
+  const drawOpenings = () => {
+    const state = new Map(ui.openings.value.map(o => [o.id, o.open]));
+    deps.blueprint.setOpenings(openingGeoms.map(g => ({ id: g.id, kind: g.kind, corners: g.corners, open: state.get(g.id) ?? true })));
+  };
   let piGeometry: GeometryAnswer | null = null;
   let piDefaults: MaterialDefaults | null = null;
   let latestMeasurement: Measurement | null = null;
@@ -124,6 +129,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     }
     sceneStore.set({ ...sceneStore.get(), openings: { loaded: openingsLoaded, closed: nextClosed } }, ['openings']);
     if (openingsLoaded) post({ type: 'setOpenings', closed });
+    drawOpenings();
     deps.retrace();
   };
 
@@ -290,33 +296,59 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     }
   };
 
-  const ptt = pushToTalk({
-    recognition: browserRecognition,
-    onText(text, final) {
-      if (!final) return;
-      ui.listening.value = false;
-      pushChat('user', text);
-      ui.chatOpen.value = true;
-      ui.thinking.value = true;
-      const session = createSession();
-      void commands
-        .ask(text, session)
-        .catch(err => session.say(`That failed: ${err instanceof Error ? err.message : 'unknown error'}`))
-        .finally(() => {
-          ui.thinking.value = false;
-        });
-    },
-  });
+  // Voice: open-source Whisper in a worker. Mic on records; mic off transcribes, then the text goes to Jev like a typed question.
+  const recorder = createRecorder();
+  recorder.warm();
+  const ask_ = (text: string) => {
+    pushChat('user', text);
+    ui.chatOpen.value = true;
+    ui.thinking.value = true;
+    const session = createSession();
+    void commands
+      .ask(text, session)
+      .catch(err => session.say(`That failed: ${err instanceof Error ? err.message : 'unknown error'}`))
+      .finally(() => {
+        ui.thinking.value = false;
+      });
+  };
   commands.voice = on => {
-    if (!ptt.available) {
+    if (!recorder.available) {
       ui.listening.value = false;
+      pushChat('jev', 'Voice needs a browser with microphone access. You can type instead.');
+      ui.chatOpen.value = true;
       return;
     }
-    if (on) ptt.start();
-    else ptt.stop();
+    if (on) {
+      ui.liveText.value = '';
+      recorder.start(t => (ui.liveText.value = t)).catch(() => {
+        ui.listening.value = false;
+        pushChat('jev', 'I could not use the microphone. Allow it in the browser, or type instead.');
+        ui.chatOpen.value = true;
+      });
+      return;
+    }
+    ui.thinking.value = true;
+    recorder
+      .stop()
+      .then(text => {
+        ui.thinking.value = false;
+        ui.liveText.value = '';
+        if (text) ask_(text);
+      })
+      .catch(() => {
+        ui.thinking.value = false;
+        pushChat('jev', 'I could not make out the recording. Try again, or type instead.');
+        ui.chatOpen.value = true;
+      });
   };
 
   // ---- Sync UI signals -> Blueprint & Worker ----
+  // Redraw the doors and windows on the blueprint whenever one opens or closes (or the list arrives after the geometry).
+  const stopOpeningsEffect = effect(() => {
+    void ui.openings.value;
+    if (openingGeoms.length) drawOpenings();
+  });
+
   const stopEchoesEffect = effect(() => {
     deps.blueprint.setEchoes(ui.showEchoes.value);
   });
@@ -410,6 +442,8 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     post({ type: 'setRooms', rooms });
     post({ type: 'loadOpenings', openings });
     openingsLoaded = true;
+    openingGeoms = openings;
+    drawOpenings();
     if (piDefaults) {
       actions.applyDefaults(piDefaults);
       piDefaults = null;
@@ -589,13 +623,14 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     },
     dispose() {
       stopEchoesEffect();
+      stopOpeningsEffect();
       stopHeatEffect();
       stopSettingsEffect();
       stopPlacingEffect();
       for (const p of placements) p.cancel();
       occlusion?.dispose();
       occlusion = null;
-      ptt.stop();
+      recorder.cancel();
     },
   };
 }

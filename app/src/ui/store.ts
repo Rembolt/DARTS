@@ -57,6 +57,24 @@ export type Selection = { kind: 'speaker' | 'opening'; id: string } | null;
 export type AudioState = 'off' | 'starting' | 'on';
 
 const SETTINGS_KEY = 'acoustic:scene';
+function loadFlag(name: string): boolean {
+  try {
+    return localStorage.getItem(`panel-shown-${name}`) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+/** Show or hide a dock-toggled panel, and remember it. */
+export function setShown(name: 'room' | 'compass', on: boolean): void {
+  (name === 'room' ? ui.roomShown : ui.compassShown).value = on;
+  try {
+    localStorage.setItem(`panel-shown-${name}`, String(on));
+  } catch {
+    /* private window: the choice just lasts this visit */
+  }
+}
+
 function loadSettings(): Settings {
   try {
     return parseSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'));
@@ -93,6 +111,9 @@ export const ui = {
   /** Materials, furnishing and quality: what the simulation runs with. Remembered between visits. */
   settings: signal<Settings>(loadSettings()),
   settingsOpen: signal(false),
+  /** The room card and the sound compass can be hidden from the dock (they stay foldable too). Remembered. */
+  roomShown: signal(loadFlag('room')),
+  compassShown: signal(loadFlag('compass')),
   /** The headphones screen has been passed. */
   started: signal(false),
   /** The last trace, for the sound compass. `positions` matches `sources` by index. */
@@ -111,6 +132,8 @@ export const ui = {
   speaking: signal(false),
   /** Voice input. The mic button flips it; speech recognition plugs into `commands.voice` later. */
   listening: signal(false),
+  /** What Whisper has heard so far while the mic is on. */
+  liveText: signal(''),
   footsteps: signal(true),
 };
 

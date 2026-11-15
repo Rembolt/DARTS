@@ -60,13 +60,12 @@ describe('toolsFor', () => {
     expect(props.material.enum).toContain('carpet');
   });
 
-  it('declares strict schemas with every key required', () => {
+  it('declares closed schemas with every key required', () => {
     const scene = defaultScene('Ki9YdfpNKum');
     scene.permissions.put.userLocation = true;
     scene.permissions.putLayer.type002 = true;
     const tools = toolsFor(scene.permissions, { sounds: ['music'], rooms: ['Kitchen'], layers: ['type002'] });
     for (const tool of tools) {
-      expect(tool.strict).toBe(true);
       expect(tool.input_schema.additionalProperties).toBe(false);
       const keys = Object.keys(tool.input_schema.properties);
       expect(tool.input_schema.required).toEqual(keys);

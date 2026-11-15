@@ -5,7 +5,6 @@ import type { Permissions } from '../scene/state';
 export type JevTool = {
   name: ActionName;
   description: string;
-  strict: true;
   input_schema: {
     type: 'object';
     additionalProperties: false;
@@ -21,7 +20,7 @@ const MEASUREMENT_SCHEMA = {
   additionalProperties: false,
   properties: {
     roomId: { type: ['string', 'null'] },
-    echoTime: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
+    echoTime: { type: 'array', items: { type: 'number' } },
     sources: {
       type: 'array',
       items: {
@@ -29,7 +28,7 @@ const MEASUREMENT_SCHEMA = {
         additionalProperties: false,
         properties: {
           id: { type: 'string' },
-          levelDb: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
+          levelDb: { type: 'array', items: { type: 'number' } },
           walls: { type: 'number' },
         },
         required: ['id', 'levelDb', 'walls'],
@@ -48,7 +47,6 @@ function strictTool(
   return {
     name,
     description,
-    strict: true,
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -58,7 +56,7 @@ function strictTool(
   };
 }
 
-/** Build the strict tool list allowed by the current permissions (spec 6.3, 6.5). */
+/** Build the tool list (not API strict mode: it caps unions at 16 and rejects minItems > 1) allowed by the current permissions (spec 6.3, 6.5). */
 export function toolsFor(
   p: Permissions,
   ctx: { sounds: string[]; rooms: string[]; layers: string[] },
@@ -97,7 +95,7 @@ export function toolsFor(
   add('set_opening', 'Open or close a window or door by id, or by room and type.', {
     id: { type: ['string', 'null'] },
     room: { type: ['string', 'null'] },
-    type: { type: ['string', 'null'], enum: [...openingTypes, null] },
+    type: { anyOf: [{ type: 'string', enum: openingTypes }, { type: 'null' }] },
     state: { type: 'string', enum: ['open', 'closed'] },
   });
   add('place_speaker', 'Place a speaker at a room centre (1 m up) or 3D point.', {
@@ -115,7 +113,7 @@ export function toolsFor(
     id: { type: 'string' },
     levelDb: { type: ['number', 'null'] },
     enabled: { type: ['boolean', 'null'] },
-    sound: { type: ['string', 'null'], enum: [...ctx.sounds, null] },
+    sound: { anyOf: [{ type: 'string', enum: ctx.sounds }, { type: 'null' }] },
   });
   add('remove_speaker', 'Remove a placed speaker by id.', {
     id: { type: 'string' },

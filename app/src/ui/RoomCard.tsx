@@ -35,7 +35,7 @@ export function RoomCard() {
   const sound = ui.sound.value;
   const outdoor = sound?.sources.find(s => isOutdoorSource(s.id)) ?? sound?.sources[0];
   const indoor = sound?.sources.find(s => !isOutdoorSource(s.id));
-  if (!sound || !outdoor) return null;
+  if (!sound || !outdoor || !ui.roomShown.value) return null;
   const trim = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
   const street = Math.round(heardDb(bandMean(outdoor.direct), trim.db));
   const rating = quietRating(street);

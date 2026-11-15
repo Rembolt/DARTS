@@ -1,6 +1,7 @@
 // "Where the sound comes from": a dial at the listener that turns with the view. Each source is a dot at its true
 // bearing, sized by how much of it gets through; its echoes are a soft shape leaning toward the walls that send them
 // back. Built from the same trace the audio uses, so what you see is what you hear.
+import { Car, Moon, Sun, Sunset } from 'lucide-preact';
 import { SLOT_DIRECTIONS } from '../config';
 import { PATHS_STYLE } from '../blueprint/paths';
 import { bandMean, echoRose, rosePath, viewBearing, worldBearing } from './compass';
@@ -8,6 +9,7 @@ import { Panel } from './Panel';
 import { heardDb, outdoorTrim, TIME_OF_DAY } from './scenario';
 import { heardOpenings, isOutdoorSource, ui } from './store';
 
+const TIME_ICON = { rush: Car, day: Sun, evening: Sunset, night: Moon } as const;
 const SIZE = 168;
 const C = SIZE / 2;
 const OUTER = 66;
@@ -17,7 +19,7 @@ const ROSE_MAX = 52;
 export function SoundCompass() {
   const sound = ui.sound.value;
   const pose = ui.pose.value;
-  if (!sound || !pose) return null;
+  if (!sound || !pose || !ui.compassShown.value) return null;
   const yaw = pose.rotation.y;
   const labels = new Map(ui.speakers.value.map(s => [s.id, s.label]));
   const trim = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
@@ -60,25 +62,30 @@ export function SoundCompass() {
         {sound.sources.map((src, i) => (
           <div class="c-src" key={src.id}>
             <i style={{ background: color(i) }} />
-            <span>{labels.get(src.id) ?? src.id}</span>
+            <span title={labels.get(src.id) ?? src.id}>{labels.get(src.id) ?? src.id}</span>
             <em>
               {Math.round(level(src.id, bandMean(src.direct)))} dB{src.walls > 0 ? ` · ${src.walls} wall${src.walls > 1 ? 's' : ''}` : ''}
             </em>
           </div>
         ))}
         <div class="segmented" role="radiogroup" aria-label="Traffic">
-          {TIME_OF_DAY.map(t => (
+          {TIME_OF_DAY.map(t => {
+            const Icon = TIME_ICON[t.id];
+            return (
             <button
               key={t.id}
               type="button"
               role="radio"
               aria-checked={ui.timeOfDay.value === t.id}
               class={ui.timeOfDay.value === t.id ? 'on' : ''}
+              title={t.label}
+              aria-label={t.label}
               onClick={() => (ui.timeOfDay.value = t.id)}
             >
-              {t.label}
+              <Icon size={15} aria-hidden="true" />
             </button>
-          ))}
+            );
+          })}
         </div>
       </figcaption>
       </div>

@@ -62,7 +62,7 @@ export function regionOf(pins: { lat: number; lon: number }[], focus: Focus | nu
     const spanLatKm = (Math.max(...lats) - Math.min(...lats)) * KM_PER_DEG;
     const spanLonKm = (Math.max(...lons) - Math.min(...lons)) * KM_PER_DEG * Math.cos((lat * Math.PI) / 180);
     // 4:3 map: the width counts three quarters. 0.6 leaves a margin round the pins.
-    return { lat, lon, heightKm: Math.max(4, Math.max(spanLatKm, spanLonKm * 0.75) / 0.6) };
+    return { lat, lon, heightKm: Math.max(4, Math.max(spanLatKm, spanLonKm * 0.75) / 0.5) };
   }
   if (city) return { lat: (city.north + city.south) / 2, lon: (city.east + city.west) / 2, heightKm: (city.north - city.south) * KM_PER_DEG, cover: city };
   return null;
@@ -78,7 +78,8 @@ export function framing(region: Region | null, ratio = 4 / 3): { cx: number; cy:
     return { cx: at.x, cy: at.y, scale: START.zoom };
   }
   const { x, y } = project(USA_VIEW, region.lat, region.lon);
-  let scale = USA_HEIGHT_KM / region.heightKm;
+  // The stage covers the window, so a window wider than 4:3 sees only part of the stage's height: zoom out to keep every pin in.
+  let scale = (USA_HEIGHT_KM * Math.min(1, 4 / 3 / ratio)) / region.heightKm;
   if (region.cover) {
     // Zoom in until the window sees nothing but this picture (the km per degree differs from the country box's, so both axes count).
     const fh = (region.cover.north - region.cover.south) / (USA_VIEW.north - USA_VIEW.south);
@@ -199,6 +200,7 @@ export function createCityMap(deps: CityMapDeps): CityMap {
     const city = CITY_VIEWS.find(v => v.name === current) ?? null;
     root.classList.toggle('choosing', city === null);
     marks.hidden = city !== null;
+    root.classList.toggle('zoomed', city !== null);
 
     const region = regionOf(pins, focus, city);
     const ratio = root.clientWidth > 0 && root.clientHeight > 0 ? root.clientWidth / root.clientHeight : 4 / 3;
@@ -230,7 +232,11 @@ export function createCityMap(deps: CityMapDeps): CityMap {
 
     show(cityImage, city?.imageUrl ?? null, city);
     // A sharp tile once the view is small enough for one (25 km tall at most).
-    const tile = region && city ? detailTile(region.lat, region.lon, region.heightKm / 2) : null;
+    // The tile is 4:3 and its centre is snapped, so it must be taller than the view needs: a wide window sees more width than
+    // a 4:3 tile has, the docked chat shifts the view, and the snap moves the tile up to an eighth of its height. Too big for
+    // any tile: the city picture shows instead.
+    const wide = Math.max(1, (ratio * 3) / 4);
+    const tile = region && city ? detailTile(region.lat, region.lon, (region.heightKm * wide * 1.4) / 2) : null;
     show(detail, tile?.url ?? null, tile);
 
     const points = pins.map(p => project(USA_VIEW, p.lat, p.lon));

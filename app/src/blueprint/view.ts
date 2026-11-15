@@ -38,6 +38,8 @@ export type Blueprint = {
   /** Walls between the listener and each source, for the line's steps. */
   setWalls(walls: ({ distance: number; lossDb: number }[] | undefined)[]): void;
   setEchoes(on: boolean): void;
+  /** Doors and windows in the wall: an outline each, filled in when closed and hollow when open. */
+  setOpenings(items: { id: string; kind: 'door' | 'window'; corners: readonly (readonly [number, number, number])[]; open: boolean }[]): void;
   setVisible(visible: boolean): void;
   resize(box: { width: number; height: number }, pixelRatio: number): void;
   dispose(): void;
@@ -75,6 +77,19 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
   heatMesh.frustumCulled = false;
   heatMesh.visible = false;
   scene.add(heatMesh);
+
+  // Openings: filled panels for the closed ones (door brown, window glass blue) and an outline for all, pulled toward the camera so
+  // they sit on the wall instead of z-fighting with it.
+  const fillMaterial = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.88, depthWrite: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  const fillMesh = new Mesh(new BufferGeometry(), fillMaterial);
+  fillMesh.frustumCulled = false;
+  fillMesh.renderOrder = 2;
+  scene.add(fillMesh);
+  const outlineMaterial = new LineBasicMaterial({ vertexColors: true, depthWrite: false });
+  const outline = new LineSegments(new BufferGeometry(), outlineMaterial);
+  outline.frustumCulled = false;
+  outline.renderOrder = 3;
+  scene.add(outline);
 
   let renderer: WebGLRenderer | null = null; // created on first show: a hidden blueprint costs nothing
   let size = canvasSize({ width: canvas.clientWidth, height: canvas.clientHeight }, 1);
@@ -171,6 +186,48 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
       heatMesh.visible = true;
       scheduler.request();
     },
+    setOpenings(items) {
+      const DOOR = [0.55, 0.36, 0.2];
+      const GLASS = [0.45, 0.68, 0.85];
+      const OPEN = [0.82, 0.27, 0.16]; // the sound's vermilion: an open gap is where sound gets through
+      const closed = items.filter(i => !i.open && i.corners.length === 4);
+      const fp = new Float32Array(closed.length * 12);
+      const fc = new Float32Array(closed.length * 12);
+      const fi = new Uint32Array(closed.length * 6);
+      closed.forEach((it, n) => {
+        const col = it.kind === 'door' ? DOOR : GLASS;
+        it.corners.forEach((c, k) => {
+          fp.set(c, n * 12 + k * 3);
+          fc.set(col, n * 12 + k * 3);
+        });
+        fi.set([n * 4, n * 4 + 1, n * 4 + 2, n * 4, n * 4 + 2, n * 4 + 3], n * 6);
+      });
+      const valid = items.filter(i => i.corners.length === 4);
+      const lp = new Float32Array(valid.length * 24);
+      const lc = new Float32Array(valid.length * 24);
+      valid.forEach((it, n) => {
+        const col = it.open ? OPEN : it.kind === 'door' ? [0.3, 0.18, 0.08] : [0.2, 0.4, 0.6];
+        for (let k = 0; k < 4; k++) {
+          const a = it.corners[k], b = it.corners[(k + 1) % 4];
+          const at = n * 24 + k * 6;
+          lp.set([a[0], a[1], a[2], b[0], b[1], b[2]], at);
+          lc.set([...col, ...col], at);
+        }
+      });
+      const oldFill = fillMesh.geometry, oldOutline = outline.geometry;
+      const fg = new BufferGeometry();
+      fg.setAttribute('position', new BufferAttribute(fp, 3));
+      fg.setAttribute('color', new BufferAttribute(fc, 3));
+      fg.setIndex(new BufferAttribute(fi, 1));
+      fillMesh.geometry = fg;
+      const og = new BufferGeometry();
+      og.setAttribute('position', new BufferAttribute(lp, 3));
+      og.setAttribute('color', new BufferAttribute(lc, 3));
+      outline.geometry = og;
+      oldFill.dispose();
+      oldOutline.dispose();
+      scheduler.request();
+    },
     setSurfaceColors(colors) {
       colors.forEach((c, i) => surfaces[i]?.color.set(c));
       scheduler.request();
@@ -223,6 +280,10 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
       solid.geometry.dispose();
       heatMesh.geometry.dispose();
       heatMaterial.dispose();
+      fillMesh.geometry.dispose();
+      fillMaterial.dispose();
+      outline.geometry.dispose();
+      outlineMaterial.dispose();
       for (const m of surfaces) m.dispose();
       paths.dispose();
       renderer?.dispose();

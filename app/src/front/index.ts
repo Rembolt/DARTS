@@ -4,9 +4,10 @@ import { CITY_VIEWS, DEMO_MODEL_ID, NOT_POSSIBLE, type AgentEvent, type City, ty
 import { getJson, type NotPossibleError } from '../api';
 import { tourUrl } from '../route';
 import { rankCards, renderCard } from './card';
-import { ArrowUp, Check, Headphones, Loader2, MapPin, Square, icon } from './icons';
+import { ArrowUp, Check, Headphones, Loader2, MapPin, Mic, MicOff, Square, icon } from './icons';
 import { createCityMap, type Pin } from './map';
 import { askAgent } from './stream';
+import { createRecorder } from '../voice/whisper';
 import { EMPTY, load, reduce, save, type FrontAction, type FrontState } from './state';
 import './front.css';
 
@@ -116,7 +117,58 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   cityPill.append(icon(MapPin, 13), cityPillText);
   cityPill.hidden = true;
   cityPill.addEventListener('click', () => apply({ type: 'city', city: null }));
-  form.append(label, meter, cityPill, box, button);
+  // Voice: open-source Whisper in a worker. Click to talk, click again: the words land in the box and are sent.
+  const recorder = createRecorder();
+  const mic = el('button', 'mic');
+  mic.type = 'button';
+  mic.title = 'Talk instead of typing';
+  mic.setAttribute('aria-label', 'Talk instead of typing');
+  mic.setAttribute('aria-pressed', 'false');
+  const micOn = icon(Mic, 16);
+  const micOff = icon(MicOff, 16);
+  micOff.hidden = true;
+  mic.append(micOn, micOff);
+  mic.hidden = !recorder.available;
+  const idlePlaceholder = 'A quiet place to record music';
+  let listening = false;
+  function setListening(on: boolean): void {
+    listening = on;
+    mic.classList.toggle('on', on);
+    mic.setAttribute('aria-pressed', String(on));
+    micOn.hidden = on;
+    micOff.hidden = !on;
+    box.placeholder = on ? 'Listening… click the mic when you are done' : idlePlaceholder;
+  }
+  mic.addEventListener('click', () => {
+    if (!listening) {
+      recorder.warm();
+      setListening(true);
+      recorder.start(t => (box.value = t)).catch(() => {
+        setListening(false);
+        box.placeholder = 'Microphone blocked. Allow it in the browser, or type.';
+      });
+      return;
+    }
+    setListening(false);
+    box.placeholder = 'Writing down what you said…';
+    mic.disabled = true;
+    recorder
+      .stop()
+      .then(text => {
+        box.placeholder = idlePlaceholder;
+        if (text) {
+          box.value = text;
+          ask();
+        }
+      })
+      .catch(() => {
+        box.placeholder = 'I could not make that out. Try again, or type.';
+      })
+      .finally(() => {
+        mic.disabled = false;
+      });
+  });
+  form.append(label, meter, cityPill, box, mic, button);
 
   // The conversation: what you asked, the steps, the reply, then the places. Same bubbles as the tour's chat.
   const userMsg = el('p', 'msg user');
