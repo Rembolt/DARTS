@@ -29,6 +29,7 @@ export function applyPose(camera: PerspectiveCamera, pose: Pose, aspect?: number
   }
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   camera.updateMatrixWorld(true);
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
 }
 
 /** The unit direction the pose looks along. */

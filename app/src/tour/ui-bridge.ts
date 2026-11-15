@@ -18,6 +18,7 @@ import type { Pose } from '../viewer';
 import { createFieldClient, installFeatures } from '../ui/features';
 import { materialById, toConfigMessage } from '../ui/materials';
 import { mountUi } from '../ui/mount';
+import { createOcclusion, type Occlusion } from '../ui/occlusion';
 import { startedBefore } from '../ui/StartScreen';
 import { addProbe, addSpeaker, commands, createSession, pushChat, SOUND_LIBRARY, ui, type Opening, type Speaker } from '../ui/store';
 import { createPlacement } from './placement';
@@ -72,6 +73,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   };
 
   let meshReady: { positions: Float32Array; indices: Uint32Array; materials: Uint8Array } | null = null;
+  let occlusion: Occlusion | null = null;
   let meshLayers: { id: string; triangles: number }[] = [];
   let roomsTagged = false;
   let openingsLoaded = false;
@@ -482,6 +484,10 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     onSimReady(ready) {
       meshReady = ready.mesh;
       meshLayers = ready.layers;
+      occlusion?.dispose();
+      occlusion = createOcclusion(ready.mesh, map => {
+        ui.hidden.value = map;
+      });
       sendGeometryToWorker();
       post(toConfigMessage(ui.settings.value));
     },
@@ -529,6 +535,16 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     onPose(pose, inside) {
       ui.pose.value = pose;
       if (inside) features.onListener([pose.position.x, pose.position.y, pose.position.z]);
+      if (occlusion) {
+        const items = [...ui.openings.value, ...ui.speakers.value];
+        if (items.length) {
+          occlusion.query(
+            [pose.position.x, pose.position.y, pose.position.z],
+            items.map(i => i.id),
+            items.map(i => i.position),
+          );
+        }
+      }
     },
     onRoom(roomId) {
       features.setRoom(roomId);
@@ -567,6 +583,8 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       stopSettingsEffect();
       stopPlacingEffect();
       for (const p of placements) p.cancel();
+      occlusion?.dispose();
+      occlusion = null;
       ptt.stop();
     },
   };
