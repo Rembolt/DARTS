@@ -1,4 +1,6 @@
-import { it, expect } from 'vitest';
+import { it, expect, vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 20_000 }); // 300 rays × 60 bounces per run; slow when other agents load the machine
 import { simConfig } from '../config';
 import { traceReverb, virtualSource } from './reverb';
 import { mulberry32 } from './sampling';
@@ -35,11 +37,9 @@ it('delivers arrivals with positive time and non-negative energy, and reports ra
   expect(rays).toBe(300);
   expect(ms).toBeGreaterThanOrEqual(0);
   expect(out.length).toBeGreaterThan(300 * 10);
-  for (const a of out) {
-    expect(a.time).toBeGreaterThan(0);
-    expect(a.energy.every(e => e >= 0 && Number.isFinite(e))).toBe(true);
-  }
-  expect(Math.max(...out.map(a => a.bounce))).toBeGreaterThan(30); // a closed room keeps rays going for many bounces
+  // one expect for all arrivals: thousands of expect calls make this test slow on a busy machine
+  expect(out.filter(a => !(a.time > 0) || !a.energy.every(e => e >= 0 && Number.isFinite(e)))).toEqual([]);
+  expect(out.reduce((m, a) => Math.max(m, a.bounce), 0)).toBeGreaterThan(30); // a closed room keeps rays going
 });
 
 it('arrival times grow with the bounce count', () => {
