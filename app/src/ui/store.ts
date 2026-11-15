@@ -114,6 +114,9 @@ export const ui = {
   footsteps: signal(true),
 };
 
+export const isOutdoorSource = (id: string): boolean =>
+  id === 'outdoor' || id === 'area' || id === 'road' || id === 'highway' || ui.speakers.value.some(s => s.id === id && s.kind === 'ambient');
+
 export function agentState(): AgentState {
   if (ui.thinking.value) return 'thinking';
   if (ui.listening.value) return 'listening';

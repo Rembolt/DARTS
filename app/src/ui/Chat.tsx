@@ -6,12 +6,12 @@ import { plain, onKeyDown } from './keys';
 import { Orb, stateLabel } from './Orb';
 import { bandMean } from './compass';
 import { heardDb, outdoorTrim } from './scenario';
-import { agentState, commands, createSession, pushChat, resolveProposal, ui, type ChatMessage } from './store';
+import { agentState, commands, createSession, isOutdoorSource, pushChat, resolveProposal, ui, type ChatMessage } from './store';
 
 /** One suggestion from the numbers, or nothing. Never a generic list. */
 function contextHint(): { text: string; ask: string } | null {
   const sound = ui.sound.value;
-  const outdoor = sound?.sources.find(s => s.id === 'outdoor');
+  const outdoor = sound?.sources.find(s => isOutdoorSource(s.id));
   if (!outdoor) return null;
   const db = Math.round(heardDb(bandMean(outdoor.direct), outdoorTrim(ui.openings.value, ui.timeOfDay.value).db));
   const open = ui.openings.value.filter(o => o.type === 'window' && o.open).length;

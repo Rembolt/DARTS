@@ -7,7 +7,7 @@ import { toDb } from './compass';
 import { onKeyDown, onKeyUp, onWindowBlur, plain } from './keys';
 import { floorGrid, type FloorGrid } from './heat';
 import { outdoorTrim } from './scenario';
-import { heardOpenings, ui } from './store';
+import { heardOpenings, isOutdoorSource, ui } from './store';
 
 type FieldResult = Extract<FromWorker, { type: 'field' }>;
 type Mesh = { positions: Float32Array; indices: Uint32Array; materials: Uint8Array };
@@ -73,10 +73,17 @@ export function installFeatures(deps: {
   sources: () => { id: string; position: Vec3 }[] | null;
   audio: () => AudioEngine | null;
 }): Features {
+  const applyOutdoorTrim = (engine: AudioEngine | null, db: number, highDb: number) => {
+    if (!engine) return;
+    const outdoorIds = new Set((deps.sources() ?? []).filter(s => isOutdoorSource(s.id)).map(s => s.id));
+    if (outdoorIds.size === 0) outdoorIds.add('outdoor');
+    for (const id of outdoorIds) engine.setSourceTrim(id, db, highDb);
+  };
+
   // Traffic and windows: one trim on the outdoor sound, re-applied whenever either changes (or A is held).
   effect(() => {
     const t = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
-    deps.audio()?.setSourceTrim('outdoor', t.db, t.highDb);
+    applyOutdoorTrim(deps.audio(), t.db, t.highDb);
   });
 
   // Heat map: street noise over this storey's floor.
@@ -84,7 +91,8 @@ export function installFeatures(deps: {
   let heatBusy = false;
   const buildHeat = async (listener: Vec3) => {
     const mesh = deps.mesh();
-    const outdoor = deps.sources()?.find(s => s.id === 'outdoor');
+    const srcs = deps.sources();
+    const outdoor = srcs?.find(s => isOutdoorSource(s.id)) ?? srcs?.[0];
     if (!mesh || !outdoor || heatBusy) return;
     heatBusy = true;
     heatAt = listener;
@@ -136,7 +144,7 @@ export function installFeatures(deps: {
     },
     onAudio(engine) {
       const t = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
-      engine.setSourceTrim('outdoor', t.db, t.highDb);
+      applyOutdoorTrim(engine, t.db, t.highDb);
     },
     setRoom(id) {
       roomId = id;

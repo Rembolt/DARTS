@@ -6,7 +6,7 @@ import { DoorIcon, WindowIcon } from './icons';
 import { Inspector } from './Inspector';
 import { layoutPins, type PinInput } from './pins';
 import { project, useCamera } from './project';
-import { heardOpenings, previewedIds, removeProbe, toggleOpening, ui } from './store';
+import { heardOpenings, isOutdoorSource, previewedIds, removeProbe, toggleOpening, ui } from './store';
 import { PATHS_STYLE } from '../blueprint/paths';
 import { outdoorTrim } from './scenario';
 
@@ -115,7 +115,7 @@ export function Hotspots() {
                     <div key={r.sourceId} class="probe-row">
                       <i style={{ background: names.get(r.sourceId)?.color }} />
                       <span>{names.get(r.sourceId)?.label ?? r.sourceId}</span>
-                      <b>{Math.round(r.db + (r.sourceId === 'outdoor' ? outdoorTrim(shownOpenings, ui.timeOfDay.value).db : 0))}</b>
+                      <b>{Math.round(r.db + (isOutdoorSource(r.sourceId) ? outdoorTrim(shownOpenings, ui.timeOfDay.value).db : 0))}</b>
                     </div>
                   ))
                 )}

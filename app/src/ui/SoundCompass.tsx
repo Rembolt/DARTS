@@ -6,7 +6,7 @@ import { PATHS_STYLE } from '../blueprint/paths';
 import { bandMean, echoRose, rosePath, viewBearing, worldBearing } from './compass';
 import { Panel } from './Panel';
 import { heardDb, outdoorTrim, TIME_OF_DAY } from './scenario';
-import { heardOpenings, ui } from './store';
+import { heardOpenings, isOutdoorSource, ui } from './store';
 
 const SIZE = 168;
 const C = SIZE / 2;
@@ -21,7 +21,7 @@ export function SoundCompass() {
   const yaw = pose.rotation.y;
   const labels = new Map(ui.speakers.value.map(s => [s.id, s.label]));
   const trim = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
-  const level = (id: string, strength: number) => heardDb(strength, id === 'outdoor' ? trim.db : 0);
+  const level = (id: string, strength: number) => heardDb(strength, isOutdoorSource(id) ? trim.db : 0);
 
   return (
     <Panel id="compass" title="Sound around you" className="p-compass" anchor="bottom">

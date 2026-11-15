@@ -3,7 +3,7 @@
 import { bandMean, toDb } from './compass';
 import { heardDb, outdoorTrim, quietRating } from './scenario';
 import { Panel } from './Panel';
-import { alternative, heardOpenings, ui } from './store';
+import { alternative, heardOpenings, isOutdoorSource, ui } from './store';
 
 const W = 198;
 const H = 78;
@@ -33,8 +33,8 @@ function Decay({ echoTime, slots }: { echoTime: [number, number, number]; slots:
 
 export function RoomCard() {
   const sound = ui.sound.value;
-  const outdoor = sound?.sources.find(s => s.id === 'outdoor');
-  const indoor = sound?.sources.find(s => s.id === 'indoor');
+  const outdoor = sound?.sources.find(s => isOutdoorSource(s.id)) ?? sound?.sources[0];
+  const indoor = sound?.sources.find(s => !isOutdoorSource(s.id));
   if (!sound || !outdoor) return null;
   const trim = outdoorTrim(heardOpenings(), ui.timeOfDay.value);
   const street = Math.round(heardDb(bandMean(outdoor.direct), trim.db));
