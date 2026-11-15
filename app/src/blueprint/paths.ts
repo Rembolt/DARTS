@@ -4,14 +4,13 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  DataTexture,
   Group,
   LineBasicMaterial,
   LineDashedMaterial,
   LineSegments,
-  Points,
-  PointsMaterial,
-  RGBAFormat,
+  Mesh,
+  MeshBasicMaterial,
+  SphereGeometry,
   Color,
 } from 'three';
 import type { Vec3 } from '../sim/types';
@@ -32,8 +31,12 @@ export const PATHS_STYLE = {
   gapSize: 0.2, // metres
   /** Lines start this far from the listener: lines that begin at the camera itself are clipped away (design 7). */
   listenerGap: 0.3, // metres
-  /** Source marker diameter in CSS pixels. Screen-constant, so the outdoor source 25 m away stays as visible as indoor. */
-  markerSize: 16,
+  /**
+   * Source marker radius in metres: a sphere at the source, seen in perspective like the walls, so a near source looks
+   * near (a screen-constant dot looked far away). 0.12 m: small up close, still about 5 px at 25 m on an 800 px view.
+   */
+  markerRadius: 0.12,
+  markerAlpha: 0.9,
 };
 
 export type TraceOverlay = {
@@ -167,21 +170,6 @@ export function writeAttribute(
   return next;
 }
 
-/** A soft white disc: the point sprite for the source markers (tinted by the vertex colour). */
-function discTexture(size = 32): DataTexture {
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const r = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2) / (size / 2);
-      const o = (y * size + x) * 4;
-      data[o] = data[o + 1] = data[o + 2] = 255;
-      data[o + 3] = Math.round(255 * Math.min(1, Math.max(0, (1 - r) * (size / 2))));
-    }
-  const texture = new DataTexture(data, size, size, RGBAFormat);
-  texture.needsUpdate = true;
-  return texture;
-}
-
 export type PathsLayer = {
   object: Group;
   /** Shows a trace, or clears the layer with `null`. Only CPU work: the caller requests the render. */
@@ -195,18 +183,12 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
   const overlay = { transparent: true, depthTest: false, depthWrite: false, vertexColors: true } as const;
   const pathMaterial = new LineBasicMaterial(overlay);
   const directMaterial = new LineDashedMaterial({ ...overlay, dashSize: style.dashSize, gapSize: style.gapSize });
-  const sprite = discTexture();
-  const markerMaterial = new PointsMaterial({
-    ...overlay,
-    size: style.markerSize,
-    sizeAttenuation: false,
-    map: sprite,
-    alphaTest: 0.05,
-  });
+  const sphere = new SphereGeometry(style.markerRadius, 20, 14);
+  const markerMaterials: MeshBasicMaterial[] = [];
 
   const pathLines = new LineSegments(new BufferGeometry(), pathMaterial);
   const directLines = new LineSegments(new BufferGeometry(), directMaterial);
-  const markers = new Points(new BufferGeometry(), markerMaterial);
+  const markers = new Group(); // one sphere per source, made on demand
   const object = new Group();
   for (const [o, order] of [[pathLines, 1], [directLines, 2], [markers, 3]] as const) {
     o.frustumCulled = false;
@@ -215,8 +197,28 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
   }
   object.visible = false;
 
+  /** Place one sphere per source; extra spheres from an earlier trace are hidden, not freed. */
+  const placeMarkers = (positions: Float32Array, colors: Float32Array) => {
+    const n = positions.length / 3;
+    while (markers.children.length < n) {
+      const material = new MeshBasicMaterial({ transparent: true, opacity: style.markerAlpha, depthTest: false, depthWrite: false });
+      markerMaterials.push(material);
+      const m = new Mesh(sphere, material);
+      m.renderOrder = 3;
+      m.frustumCulled = false;
+      markers.add(m);
+    }
+    markers.children.forEach((child, i) => {
+      const m = child as Mesh<SphereGeometry, MeshBasicMaterial>;
+      m.visible = i < n;
+      if (!m.visible) return;
+      m.position.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+      m.material.color.setRGB(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]);
+    });
+  };
+
   const fill = (
-    target: LineSegments | Points,
+    target: LineSegments,
     positions: Float32Array,
     colors: Float32Array,
     colorSize: number,
@@ -237,21 +239,21 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
       const a = buildTraceArrays(trace, style);
       fill(pathLines, a.pathPositions, a.pathColors, 4);
       fill(directLines, a.directPositions, a.directColors, 4);
-      fill(markers, a.markerPositions, a.markerColors, 3);
+      placeMarkers(a.markerPositions, a.markerColors);
       // LineDashedMaterial needs the distance along each line. Written here rather than by computeLineDistances(),
       // which would make a new GPU buffer on every trace.
       directLines.geometry = writeAttribute(directLines.geometry, 'lineDistance', a.directDistances, 1);
       object.visible = true;
     },
-    setPixelRatio(pixelRatio) {
-      markerMaterial.size = style.markerSize * pixelRatio; // point size is in device pixels
+    setPixelRatio() {
+      // Spheres are sized in metres, so the pixel ratio no longer matters; kept for the view's call.
     },
     dispose() {
-      for (const o of [pathLines, directLines, markers]) o.geometry.dispose();
+      for (const o of [pathLines, directLines]) o.geometry.dispose();
       pathMaterial.dispose();
       directMaterial.dispose();
-      markerMaterial.dispose();
-      sprite.dispose();
+      sphere.dispose();
+      for (const m of markerMaterials) m.dispose();
     },
   };
 }

@@ -170,11 +170,14 @@ describe('createPathsLayer', () => {
     expect(layer.object.visible).toBe(false);
     layer.set(trace());
     expect(layer.object.visible).toBe(true);
-    const [paths, direct, markers] = layer.object.children as unknown as { geometry: BufferGeometry }[];
+    const [paths, direct] = layer.object.children as unknown as { geometry: BufferGeometry }[];
     expect(paths.geometry.drawRange.count).toBe(14);
     expect(direct.geometry.drawRange.count).toBe(4);
     expect(direct.geometry.getAttribute('lineDistance')).toBeDefined();
-    expect(markers.geometry.drawRange.count).toBe(2);
+    // Markers are spheres with a real size, at each source's position, so they shrink and grow with distance.
+    const markers = layer.object.children[2] as unknown as { children: { visible: boolean; position: { toArray(): number[] } }[] };
+    const shown = markers.children.filter(m => m.visible);
+    expect(shown.map(m => m.position.toArray())).toEqual(trace().sources.map(s => [...s.position]));
     const before = paths.geometry;
     layer.set(trace());
     expect(paths.geometry).toBe(before);
