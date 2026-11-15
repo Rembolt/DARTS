@@ -1,0 +1,25 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-11-14-v3-front-door.md
+Task 0.1: complete (commit f383018, done before this session)
+Ruling: lane branches are named v3-<lane> not v3/<lane> — a branch named v3 exists, and git cannot also hold refs under v3/ — costs nothing
+Task 0.2: complete (commits 0a1d989..63f0f78, tests: npm test →              at least ~552ms faster with isolate: false — reuses workers across files instead of one per file)
+Task 0.3: complete (commits 63f0f78..16b478c, tests: npm test →              at least ~692ms faster with isolate: false — reuses workers across files instead of one per file)
+Task 0.3: health checked live on port 8799 → six booleans (all false: worktree has no .env/bundle)
+Task 0.6: complete (commit 60f710d by helper agent, merged into v3-lane-0; npm test + typecheck green after merge)
+Ruling: 0.4 and 0.6 run by parallel helper agents in their own worktrees, merged into v3-lane-0 — user asked for simultaneous agent work; files are disjoint from 0.3 — costs a merge if they collide
+Task 0.4: complete (commit f2be816 by helper agent, merged; npm test + typecheck green after merge; browser check pending at gate 0.5)
+Ruling: app getJson maps a network failure or a non-contract error to code matterport_unreachable with the app's own 'Server not reachable' text — the contract has no code for our own server being down — Lane F's not-possible screen may label a local server fault as Matterport's
+Fix: sendFile dotfiles allow — found at gate 0.5, test 'serves a cache that sits under a dot folder' RED→GREEN, server suite 65/65
+Ruling: Wave 1 lanes A B C D (V3) and G H (V2) started from v3-lane-0 before gate 0.5 and before Lane 0 reached main — the gate only decides E and F, and main needs a push the user has not approved yet; deadline 8 AM — if Lane 0 changes after the gate, those lanes rebase
+Lane A: merged (d4337ad, cff5833); npm test + typecheck green after merge. Note for Lane D: 'no listed price' note also counts rentals.
+Lane C: merged (fba7f5b..8744998); suite + typecheck green. Notes: demo house gets no plane (airports >15 km); warehouse threshold 10; highway detection can't find freeways at any threshold
+V2 Lane G: merged (bab3f5e..646c5a5); suite + typecheck green. Handoffs: Y — replace local SetMaterials in app/src/scene/materials.ts with Lane H's sim/types import; L — map exterior_wall→exteriorWall, try/catch around action calls (effects rejections reject the action); J — room centres at floor level (placeSpeaker adds 1 m), sounds map decides valid sounds, placed speakers don't survive reset; K — call fetchDefaults when defaults is null around reset.
+Lane B: merged (5ce27c2..e041631); suite + typecheck green. Handoffs: E — RoomSummary.floor is an opaque PI floor id; D/E — boomy bass can come from an assumed height; scores bunch near 1 (profiles may need tuning)
+Lane D: merged (033d993..b22ef38); suite 260 server + 346 app green, typecheck green. Live /api/agent "record music in Houston": 5 homes checked, 5 cards, open, ranked answer, done in 21.6 s.
+Finding for Z: profiles score 4 of 5 homes 1.0 for recording; best rooms include Balcony and Entrance (rooms that should not count or should score low); an interior room reports -2 dB outside noise. Lane B's scoring needs a tuning pass before the demo.
+Finding for Z: busy reaches the client as SSE notPossible on 200; spec 8.2 wants 429 (routes.ts). Keyword fallback reads Houston neighbourhoods ("in Montrose") as another city.
+Ruling: Lanes E and F started before the user reported gate 0.5 — all five gate models download and serve meshes; the plan stops only if no model opens; deadline — if the browser check fails, Lane F is redirected. F4 split: helper builds app/src/audio/footsteps.ts + test + step files only; Lane F wires start.ts and index.html
+V2 Lane H: merged (40f8a14..9d3a844); suite+typecheck green. Handoffs: reverb cache needs clear() (J1/Y); Lane G SetMaterials lacks glassIndex/doorIndex (Y); measure levelDb includes distance (outdoor source ~28 dB below what is heard at 25 m)
+User request: road sound for every property + city louder — commit 734b607; contract LocatedSource gains 'road'; tests surroundings-road RED→GREEN, suite 264/379 green. Ruling: road levels at 10 m city 75, commercial/industrial 72, residential 65, nature 60, range 100 m; city loop 65→70 — user asked; values are rough typical — costs: scores shift for every property
+F4 module: merged (f1630c5, Kenney CC0 steps); suite+typecheck green. Handoff to F wiring: reverbInput fixed at createFootsteps — pass a stable node
+Lane E: merged (d578d9b..907d5da; stopped by user's halt after committing E1-E3 + fix; its final report was never received)
+Reverb fix: 0fd3a83 furnishing on floor only (scale 1), panels none; test 'puts furniture absorption on the floor only' RED->GREEN; suite 264/447 green. Finding: the quick summary (server/src/quick/acoustics.ts) still adds furnishing to every surface, so card echo numbers now disagree with the tour; the scan's holes cap any room near 1.0 s.
