@@ -1,24 +1,23 @@
 /* Overlay look: paper and ink, one signal colour, hairlines instead of glow. Tokens first, dark theme below. */
 :root {
   /* Deep navy glass over the tour. Light text, a lit edge, and gradients instead of flat fills. */
-  --card: linear-gradient(165deg, rgb(24 48 98 / 0.93) 0%, rgb(10 26 62 / 0.95) 55%, rgb(6 17 42 / 0.96) 100%);
+  --card: rgb(12 27 58 / 0.94);
   --paper: #0f2552;
   --solid: #0c1f47;
   --paper-2: rgb(255 255 255 / 0.09);
   --ink: #eef3ff;
   --ink-2: #a3b4d8;
-  --line: rgb(160 190 255 / 0.2);
+  --line: rgb(170 195 255 / 0.16);
   --primary: #8fb0ff;
-  --primary-grad: linear-gradient(135deg, #3a63d8 0%, #24449e 52%, #162c70 100%);
+  --primary-grad: #2a4fa8;
   --primary-ink: #ffffff;
   --deep: #0a1a40;
   --sound: #ffab2e;
   --sound-ink: #3a2000;
   --open: #2fd1b3;
   --danger: #ff7a5c;
-  --shadow: 0 1px 0 rgb(255 255 255 / 0.12) inset, 0 0 0 1px rgb(4 12 30 / 0.5), 0 18px 40px -12px rgb(2 8 22 / 0.7);
+  --shadow: 0 12px 32px -14px rgb(2 8 22 / 0.75);
   --font: 'Hanken Grotesk Variable', system-ui, sans-serif;
-  --serif: 'Fraunces Variable', Georgia, serif;
   --mono: var(--font);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
@@ -53,16 +52,6 @@ body { display: block; }
 }
 
 /* ---- Top ---- */
-.brand {
-  position: absolute; top: 14px; left: 50%; translate: -50% 0;
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 14px 8px 12px; max-width: min(300px, calc(100% - 28px));
-}
-.brand div { min-width: 0; }
-.brand strong { display: block; font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
-.brand small { display: block; color: var(--ink-2); font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-2); }
-.dot.live { background: var(--open); box-shadow: 0 0 0 3px color-mix(in srgb, var(--open) 24%, transparent); }
 
 .dock {
   position: absolute; top: 14px; right: 14px;
@@ -154,7 +143,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); }
 }
 .composer { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; border-radius: 16px; }
 .composer:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent), var(--shadow); }
-.mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--primary-grad); color: #fff; font: 700 12px var(--font); }
 .composer input { flex: 1; min-width: 0; height: 34px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 14px var(--font); }
 .composer input::placeholder { color: var(--ink-2); }
 .send { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 10px; background: var(--primary-grad); color: #fff; }
@@ -187,7 +175,6 @@ input[type='range'] { width: 100%; accent-color: var(--primary); }
   .chip:nth-child(3) { display: none; }
 }
 @media (max-width: 980px) {
-  .brand { display: none; }
   .demo-note { top: 14px; left: 14px; translate: none; }
 }
 @media (max-width: 640px) {
@@ -251,12 +238,9 @@ input[type='range'] { width: 100%; accent-color: var(--primary); }
 #ui-root > * { position: absolute; }
 #ui-root .hotspots { position: absolute; }
 
-/* ---- Brand ---- */
-.brand { gap: 12px; padding: 9px 18px 9px 14px; }
-.brand strong { font: 600 19px/1 var(--serif); font-variation-settings: 'opsz' 48, 'SOFT' 100; letter-spacing: -0.01em; }
-.brand strong em { font-style: italic; font-weight: 400; color: var(--sound); }
-.brand small { font: 600 10px var(--font); letter-spacing: 0.14em; text-transform: uppercase; margin-top: 4px; }
-.chat .mark { font-family: var(--serif); }
 .pin-tip i { font-family: var(--font); letter-spacing: 0.04em; }
 .msg { font-size: 14px; }
 .p-kicker, .step em, .p-result, .li { letter-spacing: 0.1em; }
+
+/* Status shows only when there is something to say: loading, or a problem. */
+.notice { position: absolute; top: 18px; left: 50%; translate: -50% 0; padding: 8px 16px; border-radius: 99px; background: var(--card); border: 1px solid var(--line); color: var(--ink-2); font-weight: 500; box-shadow: var(--shadow); }

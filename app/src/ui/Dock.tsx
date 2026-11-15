@@ -4,7 +4,6 @@ import { commands, ui } from './store';
 
 /** What the status line says to a person, not the raw log text. */
 function statusText(raw: string): string {
-  if (raw.startsWith('Tour playing')) return 'Live tour';
   if (raw.startsWith('Loading')) return 'Loading the tour';
   return raw.length > 40 ? 'Something went wrong' : raw;
 }
@@ -17,15 +16,11 @@ export function Dock() {
 
   return (
     <>
-      <div class="brand card" role="status">
-        <span class={`dot ${ui.status.value.startsWith('Tour playing') ? 'live' : ''}`} />
-        <div>
-          <strong>
-            Acoustic <em>Home</em>
-          </strong>
-          <small title={ui.status.value}>{statusText(ui.status.value)}</small>
+      {!ui.status.value.startsWith('Tour playing') && (
+        <div class="notice" role="status">
+          {statusText(ui.status.value)}
         </div>
-      </div>
+      )}
 
       <div class="dock card" role="toolbar" aria-label="View and sound">
         <button type="button" class={`tool ${bp.on ? 'on' : ''}`} disabled={!bp.enabled} aria-pressed={bp.on} title="Show the house outline (B)" onClick={() => commands.toggleBlueprint()}>
