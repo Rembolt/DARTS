@@ -4,7 +4,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODEL_ID_PATTERN, type AreaSummary, type IndexRow, type LocatedSource } from '../shared/contract.js';
-import { LOOP_FACADE_DB, airportsNear, classifyArea, fallbackArea, lineLevelDb, sumDb } from './area.js';
+import { LOOP_FACADE_DB, ROAD_LEVEL_10M, airportsNear, classifyArea, fallbackArea, lineLevelDb, sumDb } from './area.js';
 import { detectBody, readDetections, type Detections } from './detect.js';
 
 /** Never rejects: falls back to the property type inside. */
@@ -16,6 +16,8 @@ const TIMEOUT_MS = 15_000;
 const BACKOFF_MS = [1000, 2000, 4000];
 /** Located sources are kept within this distance. */
 const LOCATED_RANGE_M = 300;
+/** The nearest road is a located source within this distance; farther away the background loop covers it. */
+const ROAD_RANGE_M = 100;
 /** Level at 10 m of each located line source. */
 const LEVEL_AT_10M = { highway: 80, railway: 85 } as const;
 
@@ -31,6 +33,10 @@ export function summarise(reading: Detections, row: IndexRow): AreaSummary {
     if (hit !== undefined && hit.distanceM <= LOCATED_RANGE_M) {
       located.push({ kind, distanceM: hit.distanceM, bearingDeg: hit.bearingDeg, levelDb: lineLevelDb(LEVEL_AT_10M[kind], hit.distanceM) });
     }
+  }
+  const road = reading.nearest.road;
+  if (road !== undefined && road.distanceM <= ROAD_RANGE_M) {
+    located.push({ kind: 'road', distanceM: road.distanceM, bearingDeg: road.bearingDeg, levelDb: lineLevelDb(ROAD_LEVEL_10M[areaClass], road.distanceM) });
   }
   located.push(...airportsNear(row.lat, row.lon));
   return {

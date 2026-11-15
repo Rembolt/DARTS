@@ -29,7 +29,12 @@ export function classifyArea(counts: Record<string, number>): AreaClass {
 
 /** The background loop's level at the facade, per class. */
 export const LOOP_FACADE_DB: Record<AreaClass, number> = {
-  commercial: 62, city: 65, industrial: 65, residential: 50, nature: 42,
+  commercial: 62, city: 70, industrial: 65, residential: 50, nature: 42,
+};
+
+/** The nearest road's level at 10 m, by how busy the area is (a line source, like the highway). Rough typical values. */
+export const ROAD_LEVEL_10M: Record<AreaClass, number> = {
+  city: 75, commercial: 72, industrial: 72, residential: 65, nature: 60,
 };
 
 /** A line source (road, railway): `level10m` at 10 m, 3 dB less per doubling of distance; never louder than at 10 m. */

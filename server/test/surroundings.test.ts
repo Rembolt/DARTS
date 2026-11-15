@@ -47,10 +47,11 @@ describe('surroundings', () => {
     const f = fakeFetch([ok()]);
     const s = make(f.fn);
     const first = await s.get(ROW);
-    expect(first).toMatchObject({ areaClass: 'residential', source: 'vexcel', imageryDate: '2026-02-07', located: [] });
+    expect(first).toMatchObject({ areaClass: 'residential', source: 'vexcel', imageryDate: '2026-02-07', });
+    expect(first.located.map(s => s.kind)).toEqual(['road']);   // the street 30 m from the demo house
     expect(first.counts.house).toBe(82);
     expect(first.roadBearingDeg).not.toBeNull();
-    expect(first.facadeDb).toBeCloseTo(50, 5);
+    expect(first.facadeDb).toBeCloseTo(10 * Math.log10(10 ** 5 + 10 ** (first.located[0]!.levelDb / 10)), 5);   // the 50 dB loop plus the road
     expect(f.calls).toHaveLength(1);
     expect(f.calls[0]!.url).toBe('https://api.vexcelgroup.com/v2/elements/detect');
     expect(existsSync(cacheFile())).toBe(true);

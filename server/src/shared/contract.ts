@@ -96,7 +96,7 @@ export type RequirementOverrides = {
 };
 
 export type AreaClass = 'industrial' | 'commercial' | 'city' | 'residential' | 'nature';
-export type LocatedSource = { kind: 'highway' | 'railway' | 'airport'; distanceM: number; bearingDeg: number; levelDb: number };
+export type LocatedSource = { kind: 'highway' | 'railway' | 'road' | 'airport'; distanceM: number; bearingDeg: number; levelDb: number };
 export type AreaSummary = {
   areaClass: AreaClass; source: 'vexcel' | 'property_type'; counts: Record<string, number>;
   located: LocatedSource[]; roadBearingDeg: number | null; facadeDb: number; imageryDate: string | null;

@@ -45,7 +45,7 @@ describe('levels', () => {
   });
   it('sums levels as energy', () => expect(sumDb([60, 60])).toBeCloseTo(63.01, 1));
   it('has the spec loop levels', () =>
-    expect(LOOP_FACADE_DB).toEqual({ commercial: 62, city: 65, industrial: 65, residential: 50, nature: 42 }));
+    expect(LOOP_FACADE_DB).toEqual({ commercial: 62, city: 70, industrial: 65, residential: 50, nature: 42 }));
 });
 
 describe('airports', () => {
