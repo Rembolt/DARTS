@@ -2,8 +2,14 @@ import { checkBundle, loadMesh, loadServerConfig } from './api';
 import { createModeSwitch } from './blueprint/mode';
 import { bindShortcut, createToggle } from './blueprint/toggle';
 import { createBlueprint } from './blueprint/view';
+import { createAudioEngine, type AudioEngine } from './audio/engine';
+import { defaultSourcePositions } from './audio/positions';
+import { Reverb } from './audio/reverb';
 import { BLUEPRINT, simConfig } from './config';
-import { formatSimReady, startSim } from './sim/client';
+import { firstRoomId, isInside, TraceScheduler } from './listen';
+import { formatSimReady, startSim, type SimClient } from './sim/client';
+import { ReverbScheduler } from './sim/reverb-cache';
+import type { FromWorker, Vec3 } from './sim/types';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
 const status = document.getElementById('status')!;
@@ -14,6 +20,7 @@ const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('blueprint') as HTMLCanvasElement;
 const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
 const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
+const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
 
 const blueprint = createBlueprint(canvas);
 let latestPose: Pose | null = null;
@@ -50,6 +57,124 @@ listenForShortcut(document);
 new ResizeObserver(([entry]) => blueprint.resize(entry.contentRect, devicePixelRatio)).observe(stage);
 showToggle();
 
+// ---- Listener, traces, audio and reverb (mvp-design.md 2 flow, 5.5, 5.6, 6) ----
+
+let sim: SimClient | null = null; // set once the worker has the mesh
+let sources: { id: string; position: Vec3 }[] | null = null; // placed from the tour's first inside position
+let listener: Vec3 | null = null; // last position inside the house
+let roomId: string | null = null; // last room from Room.current
+let audio: AudioEngine | null = null;
+let reverb: Reverb | null = null;
+let traceId = 0;
+const traces = new TraceScheduler();
+const rooms = new ReverbScheduler();
+
+function sendTrace(position: Vec3 | null): void {
+  if (!position || !sim || !sources) return;
+  sim.worker.postMessage({ type: 'trace', id: ++traceId, listener: position, sources });
+}
+
+function sendReverb(request: ReturnType<ReverbScheduler['enterRoom']>['request']): void {
+  if (request && sim) sim.worker.postMessage(request);
+}
+
+/** Trace the listener if the worker, the sources and a position are all there. */
+function traceListener(): void {
+  if (sim && sources && listener) sendTrace(traces.onListener(listener));
+}
+
+function enterRoom(): void {
+  if (!sim || !listener) return;
+  const d = rooms.enterRoom(roomId, listener);
+  if (d.echoTime) reverb?.setEchoTime(d.echoTime);
+  sendReverb(d.request);
+}
+
+function placeSources(start: Vec3): void {
+  const pos = defaultSourcePositions(start);
+  sources = [
+    { id: 'indoor', position: pos.indoor },
+    { id: 'outdoor', position: pos.outdoor },
+  ];
+  audio?.setSourcePosition('indoor', pos.indoor);
+  audio?.setSourcePosition('outdoor', pos.outdoor);
+  console.info('sources', pos);
+  traces.invalidate();
+}
+
+function onWorkerMessage(msg: FromWorker): void {
+  switch (msg.type) {
+    case 'trace': {
+      audio?.applySimResult(msg.sources);
+      if (sources) {
+        blueprint.setTrace({
+          listener: msg.listener,
+          sources: sources.map(s => ({ position: s.position })),
+          paths: msg.paths,
+          pathSource: msg.pathSource,
+        });
+      }
+      // Until the room's reverb job answers, the trace's estimate stands in (5.5); the 15% rule stops churn.
+      if (!rooms.currentRoom || !rooms.cache.get(rooms.currentRoom)) reverb?.setEchoTime(msg.echoTimeEstimate);
+      sendTrace(traces.onResult());
+      break;
+    }
+    case 'reverb': {
+      console.info('reverb', msg.roomId, msg.echoTime.map(t => t.toFixed(2)), `${Math.round(msg.ms)} ms`);
+      const d = rooms.onResult(msg.roomId, msg.echoTime);
+      if (d.echoTime) reverb?.setEchoTime(d.echoTime);
+      sendReverb(d.request);
+      break;
+    }
+    case 'error': {
+      // The worker runs one job at a time and the message doesn't say which failed; free whatever is waiting.
+      console.warn('sim worker:', msg.message);
+      if (traces.busy) sendTrace(traces.onError());
+      if (rooms.busy) sendReverb(rooms.onError().request);
+      break;
+    }
+  }
+}
+
+function showAudio(state: 'off' | 'starting' | 'on'): void {
+  audioButton.disabled = state === 'starting';
+  audioButton.textContent = state === 'on' ? 'Stop audio' : state === 'starting' ? 'Starting…' : 'Start audio';
+  audioButton.setAttribute('aria-pressed', String(state === 'on'));
+}
+
+// The click handler itself creates the AudioContext, so the browser lets it play.
+audioButton.addEventListener('click', () => {
+  if (audio) {
+    const old = audio;
+    audio = null;
+    reverb?.dispose();
+    reverb = null;
+    showAudio('off');
+    void old.stop();
+    return;
+  }
+  showAudio('starting');
+  createAudioEngine()
+    .then(engine => {
+      audio = engine;
+      reverb = new Reverb(engine.context);
+      engine.connectReverb(reverb.input);
+      reverb.output.connect(engine.master);
+      const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
+      if (known) reverb.setEchoTime(known);
+      if (sources) for (const s of sources) engine.setSourcePosition(s.id as 'indoor' | 'outdoor', s.position);
+      if (latestPose && isInside(latestPose.mode)) engine.setListenerPose(latestPose);
+      traces.invalidate(); // a fresh trace sets every level at once
+      traceListener();
+      showAudio('on');
+      console.info('audio started', { standIns: engine.standIns });
+    })
+    .catch(err => {
+      showAudio('off');
+      showError(err);
+    });
+});
+
 function showError(err: unknown): void {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown error';
   status.textContent = message;
@@ -61,7 +186,12 @@ async function startSimulation(modelId: string): Promise<void> {
   simLine.textContent = 'Loading mesh…';
   try {
     const obj = await loadMesh(modelId);
-    const ready = await startSim().load(obj, simConfig());
+    const client = startSim();
+    const ready = await client.load(obj, simConfig());
+    client.worker.addEventListener('message', event => onWorkerMessage((event as MessageEvent<FromWorker>).data));
+    sim = client;
+    traceListener();
+    enterRoom();
     simLine.textContent = formatSimReady(ready);
     blueprint.setLines(ready.lines);
     blueprint.setMesh(ready.mesh);
@@ -114,7 +244,33 @@ async function start(): Promise<void> {
     poseLine.textContent = formatPose(pose);
     blueprint.setPose(pose);
     latestPose = pose;
+    // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
+    if (!isInside(pose.mode)) return;
+    listener = [pose.position.x, pose.position.y, pose.position.z];
+    if (!sources) placeSources(listener);
+    audio?.setListenerPose(pose);
+    traceListener();
   });
+
+  sdk.Room.current.subscribe(current => {
+    const id = firstRoomId(current);
+    if (!id || id === roomId) return; // between rooms or outside: keep the last room
+    roomId = id;
+    enterRoom();
+  });
+
+  // Dev helper (mvp-design.md 8): press P to log the point under the cursor, to paste as a source position.
+  let pointed: Vec3 | null = null;
+  sdk.Pointer.intersection.subscribe(hit => {
+    pointed = [hit.position.x, hit.position.y, hit.position.z];
+  });
+  const logPoint = (event: KeyboardEvent) => {
+    const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+    if (event.key.toLowerCase() !== 'p' || event.repeat || typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (pointed) console.info('point', JSON.stringify(pointed.map(v => +v.toFixed(3))));
+  };
+  document.addEventListener('keydown', logPoint);
+  iframe.contentWindow?.addEventListener('keydown', logPoint);
 
   if (import.meta.env.DEV) {
     const { installBlueprintCheck } = await import('./debug');

@@ -47,7 +47,8 @@
         color: #bdb;
       }
       #blueprint-toggle,
-      #blueprint-mode {
+      #blueprint-mode,
+      #audio-toggle {
         flex: none;
         height: 20px;
         padding: 0 10px;
@@ -62,8 +63,13 @@
         background: #1f3a93;
         border-color: #1f3a93;
       }
+      #audio-toggle[aria-pressed='true'] {
+        background: #2e7d32;
+        border-color: #2e7d32;
+      }
       #blueprint-toggle:disabled,
-      #blueprint-mode:disabled {
+      #blueprint-mode:disabled,
+      #audio-toggle:disabled {
         opacity: 0.5;
         cursor: default;
       }
@@ -95,6 +101,7 @@
     <header>
       <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
       <button id="blueprint-mode" type="button" disabled>X-ray</button>
+      <button id="audio-toggle" type="button" aria-pressed="false">Start audio</button>
       <p id="status">Loading…</p>
       <p id="pose"></p>
       <p id="sim"></p>

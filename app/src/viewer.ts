@@ -9,8 +9,16 @@ export type Pose = {
   projection: ArrayLike<number>;
 };
 
-/** The part of the Matterport SDK we use. Later steps add `Room` and `Pointer`. */
+/** The part of the Matterport SDK we use. */
 export type MpSdk = {
+  /** The rooms the camera is in; empty between rooms or outside the inside view. Keys the reverb cache. */
+  Room: { current: { subscribe(cb: (current: { rooms: { id: string }[] }) => void): { cancel(): void } } };
+  /** What is under the cursor in the tour; the P key logs it to pick a source position. */
+  Pointer: {
+    intersection: {
+      subscribe(cb: (hit: { position: { x: number; y: number; z: number }; object: string }) => void): { cancel(): void };
+    };
+  };
   App: {
     Phase: { PLAYING: string };
     state: { waitUntil(cond: (s: { phase: string }) => boolean): Promise<unknown> };

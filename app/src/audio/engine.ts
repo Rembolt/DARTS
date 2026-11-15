@@ -16,6 +16,8 @@ export type AudioEngine = {
   readonly context: AudioContext;
   /** Which sources are playing a synthesized stand-in because their file was missing. */
   readonly standIns: Record<SourceId, boolean>;
+  /** The master bus, before the limiter. The reverb's output connects here. */
+  readonly master: AudioNode;
   /** Move the listener to the tour camera. Call on every pose update. Echo slot panners follow it. */
   setListenerPose(pose: Pick<Pose, 'position' | 'rotation'>): void;
   /** Place a source, in SDK coordinates (Y-up, metres). */
@@ -203,6 +205,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   let stopped = false;
   return {
     context: ctx,
+    master,
     standIns: { indoor: indoorSound.standIn, outdoor: outdoorSound.standIn },
 
     setListenerPose(pose) {
