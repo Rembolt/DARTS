@@ -85,6 +85,7 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
   let shownHighlight: string | null | undefined;
 
   function enter(modelId: string): void {
+    stop(); // a run still going would otherwise come back from the back/forward cache showing Stop
     save(state, storage);
     navigate(tourUrl(modelId));
   }
@@ -160,9 +161,7 @@ export function startFrontDoor(root: HTMLElement, deps: FrontDeps = {}): void {
     e.preventDefault();
     ask(); // a new question cancels the running one
   });
-  window.addEventListener('pagehide', () => {
-    controller?.abort();
-  });
+  window.addEventListener('pagehide', stop);
 
   render();
 

@@ -186,6 +186,23 @@ describe('the front door', () => {
     expect(JSON.parse(storage.data['front:v1']).summaries[0].modelId).toBe('aaaaaaaaaaa');
   });
 
+  it('stops a running question before going into a tour', async () => {
+    const { fetchFn, agents } = server();
+    const storage = memory();
+    const go: string[] = [];
+    startFrontDoor(root, { fetch: fetchFn, storage, navigate: url => go.push(url) });
+    type('record');
+    enter();
+    await vi.waitFor(() => expect(agents).toHaveLength(1));
+    agents[0].push({ type: 'cards', summaries: [OK] });
+    await vi.waitFor(() => expect(root.querySelector('.fd-enter')).not.toBeNull());
+    q<HTMLButtonElement>('.fd-enter').click();
+    expect(agents[0].signal?.aborted).toBe(true);
+    expect(askButton().textContent).toBe('Ask');
+    expect(JSON.parse(storage.data['front:v1']).running).toBe(false);
+    expect(go).toEqual(['/?m=aaaaaaaaaaa']);
+  });
+
   it('restores the last run on return from a tour', () => {
     const storage = memory();
     storage.data['front:v1'] = JSON.stringify({
