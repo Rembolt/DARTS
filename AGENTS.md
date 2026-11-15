@@ -14,6 +14,17 @@ the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` ca
 sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
 The Blueprint button (or B) shows the house over the tour through the tour's own camera (`app/src/blueprint/`):
 Solid mode (default) draws the mesh as a white model with its edges, X-ray draws edges only; ceilings hide outside.
+The page UI is an overlay in `app/src/ui/`, built to the rules in [app/src/ui/DESIGN.md](app/src/ui/DESIGN.md): Preact + signals,
+Radix popover/select/switch/tooltip and Sonner toasts through `preact/compat` (aliased in `vite.config.ts`), lucide icons,
+Hanken Grotesk, a bone / espresso / vermilion / moss palette. State is `ui/store.ts`; `commands` there are the seams to the
+app (`ask` for the agent, `voice` for speech). Pins hide behind walls via a line-of-sight worker (`ui/occlusion.ts`,
+`ui/pins.ts`). Sound is shown as one flowing line per source that thins at each wall (`blueprint/sonar.ts`, wall positions
+from the worker's `walls` message), a heat-painted floor, a minimap, a room card, and a compass. Settings
+(`ui/materials.ts`, `ui/Settings.tsx`) change materials, furnishing and quality live through the worker's `config` message.
+Keyboard shortcuts go through `ui/keys.ts` (capture phase on the page and the tour window: the tour's canvas swallows
+bubbling key events). Doors and windows are demo data (`ui/mock.ts`), the chat is a local stand-in (`ui/localAgent.ts`),
+and speakers beyond the two MVP sources are preview only until the audio engine takes a source list. Radix Slider does not
+work under preact/compat (no thumb): use the native range input.
 Run `npm run fetch-bundle` once before `npm run dev`. Open the app at `http://localhost:5173`; port 8787 is only the API.
 [docs/project/mvp-design.md](docs/project/mvp-design.md) is the build spec: follow its section 10 build steps in order,
 and its section 4 for every hardcoded value. It supersedes anything in older docs that disagrees with it, except where

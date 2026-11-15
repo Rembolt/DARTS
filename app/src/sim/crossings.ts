@@ -67,3 +67,37 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   }
   return { walls, transmission };
 }
+
+export type WallCrossing = { /** metres from `from` to the wall */ distance: number; /** what the wall costs, dB per band (low, mid, high) */ lossDb: Bands };
+
+/**
+ * The same walls as `crossSegment`, one by one in order from `from`: where each is and what it costs. For drawing
+ * what stands between a listener and a source; the product of the walls' transmissions equals `crossSegment`'s.
+ */
+export function wallsAlong(state: SimState, from: Vec3, to: Vec3): WallCrossing[] {
+  const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
+  const length = Math.hypot(dx, dy, dz);
+  if (length === 0) return [];
+  ray.origin.set(from[0], from[1], from[2]);
+  ray.direction.set(dx / length, dy / length, dz / length);
+  const hits = state.index.bvh
+    .raycast(ray, DoubleSide, 0, length)
+    .filter(h => h.faceIndex != null && isTraced(state, h.faceIndex))
+    .sort((a, b) => a.distance - b.distance);
+  const { config } = state;
+  const scale = config.transmissionScale;
+  const out: WallCrossing[] = [];
+  let i = 0;
+  while (i < hits.length) {
+    const start = hits[i].distance;
+    const blocking: Bands = [0, 0, 0];
+    for (; i < hits.length && hits[i].distance - start < config.wallMergeDistance; i++) {
+      const tri = hits[i].faceIndex ?? -1;
+      if (tri < 0) continue;
+      const db = surfaceAt(state, tri).blockingDb;
+      for (let k = 0; k < 3; k++) if (db[k] > blocking[k]) blocking[k] = db[k];
+    }
+    out.push({ distance: start, lossDb: [blocking[0] * scale, blocking[1] * scale, blocking[2] * scale] });
+  }
+  return out;
+}

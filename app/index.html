@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Acoustic Experience</title>
+    <link rel="icon" href="data:," />
     <style>
       html,
       body {
@@ -57,54 +58,6 @@
         padding: 0 12px;
         flex: none;
         overflow: hidden;
-        white-space: nowrap;
-        background: #111;
-        color: #eee;
-      }
-      header p {
-        margin: 0;
-      }
-      #status,
-      #pose,
-      #sim {
-        min-width: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-      }
-      #pose {
-        font-family: ui-monospace, monospace;
-        color: #9cf;
-      }
-      #sim {
-        color: #bdb;
-      }
-      #blueprint-toggle,
-      #blueprint-mode,
-      #audio-toggle {
-        flex: none;
-        height: 20px;
-        padding: 0 10px;
-        border: 1px solid #555;
-        border-radius: 3px;
-        background: #222;
-        color: #eee;
-        font: inherit;
-        cursor: pointer;
-      }
-      #blueprint-toggle[aria-pressed='true'] {
-        background: #1f3a93;
-        border-color: #1f3a93;
-      }
-      #audio-toggle[aria-pressed='true'] {
-        background: #2e7d32;
-        border-color: #2e7d32;
-      }
-      #blueprint-toggle:disabled,
-      #blueprint-mode:disabled,
-      #audio-toggle:disabled {
-        opacity: 0.5;
-        cursor: default;
       }
       #stage {
         position: relative;
@@ -132,7 +85,7 @@
   </head>
   <body>
     <div id="tour" hidden>
-      <header>
+      <header hidden>
         <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
         <button id="blueprint-mode" type="button" disabled>X-ray</button>
         <button id="audio-toggle" type="button" aria-pressed="false">Start audio</button>
@@ -143,6 +96,7 @@
       <div id="stage">
         <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
         <canvas id="blueprint" hidden></canvas>
+        <div id="ui-root"></div>
       </div>
     </div>
     <main id="front" hidden></main>

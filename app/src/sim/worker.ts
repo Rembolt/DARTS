@@ -6,6 +6,9 @@ import { measure } from './measure';
 import { applySetOpenings, loadOpenings } from './openings';
 import { reverbJob } from './reverb-job';
 import { tagRooms } from './rooms';
+import { applyConfig } from './config-update';
+import { wallsAlong } from './crossings';
+import { directField } from './field';
 import { trace } from './trace';
 import type { Bands, FromWorker, ToWorker } from './types';
 
@@ -41,6 +44,24 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         const result = trace(state, msg);
         lastEstimate = result.echoTimeEstimate;
         post(result, [result.paths.buffer, result.pathSource.buffer]);
+        break;
+      }
+      case 'walls': {
+        if (!state) break;
+        post({ type: 'walls', id: msg.id, walls: wallsAlong(state, msg.from, msg.to) });
+        break;
+      }
+      case 'config': {
+        if (state) applyConfig(state, msg);
+        break;
+      }
+      case 'field': {
+        if (!state) {
+          post({ type: 'error', message: 'field before load' });
+          break;
+        }
+        const result = directField(state, msg.source, msg.points, msg.id);
+        post(result, [result.direct.buffer, result.walls.buffer]);
         break;
       }
       case 'reverb': {

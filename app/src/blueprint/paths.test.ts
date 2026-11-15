@@ -195,3 +195,26 @@ describe('createPathsLayer', () => {
     layer.dispose();
   });
 });
+
+import { buildRoutes, pointAlong } from './paths';
+describe('sonar routes', () => {
+  it('walks a polyline by distance', () => {
+    const line = [0, 0, 0, 2, 0, 0, 2, 0, 3];
+    expect(pointAlong(line, 1)).toEqual([1, 0, 0]);
+    expect(pointAlong(line, 3.5)).toEqual([2, 0, 1.5]);
+    expect(pointAlong(line, 99)).toEqual([2, 0, 3]);
+  });
+  it('runs every route from the source to the listener', () => {
+    const routes = buildRoutes({
+      listener: [0, 0, 0],
+      sources: [{ position: [4, 0, 0] }],
+      paths: Float32Array.from([0.3, 0, 0, 2, 1, 0, 2, 1, 0, 4, 0, 0]),
+      pathSource: Uint8Array.from([0, 0]),
+    });
+    expect(routes).toHaveLength(2); // the reflected path and the direct route
+    expect(Array.from(routes[0].points.slice(0, 3))).toEqual([4, 0, 0]);
+    expect(routes[0].points[routes[0].points.length - 3]).toBeCloseTo(0.3, 5);
+    expect(routes[1].points[routes[1].points.length - 2]).toBeCloseTo(-PATHS_STYLE.lineDrop, 5); // ends a little below the eye
+    expect(routes[1].direct).toBe(true);
+  });
+});

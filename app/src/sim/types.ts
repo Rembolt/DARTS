@@ -47,7 +47,13 @@ export type ToWorker =
   | { type: 'setOpenings'; closed: string[] } // every other loaded opening is open
   | { type: 'setLayers'; traced: Record<string, boolean> }
   | { type: 'setQuality'; raysPerTrace: number; bounces: number; reverbRays: number }
-  | { type: 'measure'; id: number; point: Vec3; roomId: string; sources: { id: string; position: Vec3 }[] };
+  | { type: 'measure'; id: number; point: Vec3; roomId: string; sources: { id: string; position: Vec3 }[] }
+  /** Direct sound only, one ray per point: for the heat map and listening probes. Cheap: thousands of points per call. */
+  | { type: 'field'; id: number; source: Vec3; points: Float32Array }
+  /** The walls between two points, in order from `from`: for drawing what stands between a listener and a source. */
+  | { type: 'walls'; id: number; from: Vec3; to: Vec3 }
+  /** Change the simulation settings while it runs (v2-design.md 3 and 4). Anything left out stays as it was. */
+  | { type: 'config'; materials?: Partial<SimConfig['materials']>; furnishing?: number; raysPerTrace?: number; bounces?: number; reverbRays?: number };
 
 /** A PI room in viewer coordinates: polygon in x/z, height filled per v2-design 4.4. */
 export type RoomGeom = { id: string; floorY: number; height: number; polygon: [number, number][] };
@@ -90,6 +96,9 @@ export type FromWorker =
   | { type: 'roomsReady'; rooms: { id: string; triangles: number }[]; untagged: number; exteriorWalls: number; ms: number }
   | { type: 'openingsReady'; openings: { id: string; meshClosed: boolean }[]; lines: Float32Array; ms: number }
   | { type: 'measure'; id: number; echoTime: Bands; sources: { id: string; levelDb: Bands; walls: number }[]; ms: number }
+  | { type: 'walls'; id: number; walls: { distance: number; lossDb: Bands }[] }
+  /** Per point, in the request's order: strength left after walls (3 bands, 0..1) and walls crossed. */
+  | { type: 'field'; id: number; direct: Float32Array; walls: Uint8Array; ms: number }
   | { type: 'error'; message: string };
 
 export type SourceResult = {
