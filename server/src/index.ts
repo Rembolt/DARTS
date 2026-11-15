@@ -13,7 +13,7 @@ import { apiRouter } from './routes.js';
 import { createSearch } from './search/index.js';
 import { DEMO_MODEL_ID } from './shared/contract.js';
 import { createSurroundings } from './surroundings/index.js';
-import { v2Router } from './v2/routes.js';
+import { jevRouter, v2Router } from './v2/routes.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const env = loadEnv(resolve(repoRoot, '.env'));
@@ -50,6 +50,7 @@ try {
     bundleDir,
     mesh,
     allowedIds,
+    wideRouters: [jevRouter({ env })],
     routers: [
       apiRouter({ search, quick, surroundings, agent, allowedIds }),
       v2Router({ pi, lookup: id => search.lookup(id), allowedIds, env, cacheDir }),

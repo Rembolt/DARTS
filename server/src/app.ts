@@ -19,6 +19,8 @@ export interface AppOptions {
   mesh?: MeshSource;
   /** The catalogued model ids this server may serve. Absent: only the demo house. */
   allowedIds?: Set<string>;
+  /** Mounted at /api before the 4 kB parser, with a 256 kB JSON body limit. */
+  wideRouters?: express.Router[];
   /** Mounted at /api, after a 4 kB JSON body parser. */
   routers?: express.Router[];
   /** Extra health flags (the search index); bundle and the key flags are filled in here. */
@@ -30,7 +32,7 @@ export function createApp(
   options: AppOptions = {},
 ): express.Express {
   const app = express();
-  const { bundleDir, mesh, routers = [], health } = options;
+  const { bundleDir, mesh, wideRouters = [], routers = [], health } = options;
   const allowedIds = options.allowedIds ?? new Set([DEMO_MODEL_ID]);
   const isAllowed = (id: unknown): id is string => isModelId(id) && (id === DEMO_MODEL_ID || allowedIds.has(id));
   const has = (key: string) => Boolean(env[key]?.trim());
@@ -109,6 +111,7 @@ export function createApp(
     res.json(body);
   });
 
+  if (wideRouters.length > 0) app.use('/api', express.json({ limit: '256kb' }), ...wideRouters);
   if (routers.length > 0) app.use('/api', express.json({ limit: '4kb' }), ...routers);
 
   // People open the address the server prints. Point them at the page instead of "Cannot GET /".

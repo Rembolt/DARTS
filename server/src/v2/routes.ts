@@ -6,6 +6,7 @@ import type { Search } from '../search/index.js';
 import { notPossible } from '../shared/contract.js';
 import { suggestDefaults } from './defaults.js';
 import { geometryOf } from './geometry.js';
+import { relayJev } from './jev.js';
 
 export type V2RouterDeps = {
   pi: PiSource;
@@ -39,6 +40,26 @@ export function v2Router(deps: V2RouterDeps): express.Router {
       res.json(await suggestDefaults(deps, req.params.id, refresh));
     } catch (err) {
       sendNotPossible(res, toNotPossible(err));
+    }
+  });
+
+  return router;
+}
+
+/** Wide-body V2 routes (256 kB limit), mounted at /api before the 4 kB JSON limit. */
+export function jevRouter(deps: { env: Record<string, string | undefined>; client?: unknown }): express.Router {
+  const router = express.Router();
+
+  router.post('/jev', async (req, res) => {
+    try {
+      res.json(await relayJev(deps, req.body));
+    } catch (err) {
+      const reason = toNotPossible(err);
+      if (reason.code === 'agent_failed') {
+        res.status(502).json({ error: reason.message, code: reason.code, retry: reason.retry });
+        return;
+      }
+      sendNotPossible(res, reason);
     }
   });
 
