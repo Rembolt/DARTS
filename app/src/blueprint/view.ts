@@ -18,6 +18,7 @@ import type { Pose } from '../viewer';
 import { applyPose } from './camera';
 import { ceilingsVisible, type BlueprintMode } from './mode';
 import { groupByMaterial } from './solid';
+import { createPathsLayer, type TraceOverlay } from './paths';
 import { canvasSize, createScheduler } from './schedule';
 
 export type Blueprint = {
@@ -26,6 +27,8 @@ export type Blueprint = {
   setMesh(mesh: { positions: Float32Array; indices: Uint32Array; materials: Uint8Array }): void;
   setMode(mode: BlueprintMode): void;
   setPose(pose: Pose): void;
+  /** Draws the sources, direct lines and traced paths of one trace (build step 8); `null` clears them. */
+  setTrace(trace: TraceOverlay | null): void;
   setVisible(visible: boolean): void;
   resize(box: { width: number; height: number }, pixelRatio: number): void;
   dispose(): void;
@@ -38,6 +41,8 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
   const lines = new LineSegments(new BufferGeometry(), material);
   lines.frustumCulled = false; // the bounds are the whole house; culling would save nothing
   scene.add(lines);
+  const paths = createPathsLayer();
+  scene.add(paths.object);
 
   // Solid mode: the house as a white model. Pushed back a little in depth so its own edges draw cleanly on top, and
   // drawn from both sides (the scan's winding is not reliable from outside). It hides the lines behind walls.
@@ -56,6 +61,7 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
 
   let renderer: WebGLRenderer | null = null; // created on first show: a hidden blueprint costs nothing
   let size = canvasSize({ width: canvas.clientWidth, height: canvas.clientHeight }, 1);
+  paths.setPixelRatio(size.pixelRatio);
   let posed = false;
   let lastPose: Pose | null = null;
   const aspect = () => size.width / size.height;
@@ -110,12 +116,17 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
       posed = true;
       scheduler.request();
     },
+    setTrace(trace) {
+      paths.set(trace);
+      scheduler.request();
+    },
     setVisible(visible) {
       scheduler.setVisible(visible);
     },
     resize(box, pixelRatio) {
       size = canvasSize(box, pixelRatio);
       if (lastPose) applyPose(camera, lastPose, aspect()); // refit the lens now; the tour may send no new pose
+      paths.setPixelRatio(size.pixelRatio);
       if (renderer) {
         renderer.setPixelRatio(size.pixelRatio);
         renderer.setSize(size.width, size.height, false);
@@ -128,6 +139,7 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
       material.dispose();
       solid.geometry.dispose();
       for (const m of surfaces) m.dispose();
+      paths.dispose();
       renderer?.dispose();
       renderer = null;
     },
