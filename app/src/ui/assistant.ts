@@ -31,7 +31,7 @@ export function interpret(input: string, openings: Opening[]): Intent {
       kind: 'openings',
       ids: target.map(o => o.id),
       open,
-      reply: `${open ? 'Opened' : 'Closed'} ${target.length} ${noun}${target.length > 1 ? 's' : ''}. Listen again: the outside should ${open ? 'come in' : 'drop away'}.`,
+      reply: `I'd ${open ? 'open' : 'close'} ${target.length} ${noun}${target.length > 1 ? 's' : ''}.`,
     };
   }
   if (has(text, 'speaker', 'sound source') && has(text, 'add', 'place', 'put')) {

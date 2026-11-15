@@ -14,8 +14,8 @@ the self-hosted tour with the live camera pose, and the mesh: `/api/mesh/:id` ca
 sim worker parses it, builds the ray index, tags materials and extracts blueprint lines (`app/src/sim/load.ts`).
 The Blueprint button (or B) shows the house over the tour through the tour's own camera (`app/src/blueprint/`):
 Solid mode (default) draws the mesh as a white model with its edges, X-ray draws edges only; ceilings hide outside.
-The page UI is an overlay in `app/src/ui/` (Preact + signals, lucide icons, Geist font; all MIT/ISC/OFL): top bar, door and
-window pins projected onto the tour, speaker pins with a settings card, click-to-add (S key) and the Jev chat bar. Its state
+The page UI is an overlay in `app/src/ui/` (Preact + signals, lucide icons, Fraunces and Hanken Grotesk fonts; all MIT/ISC/OFL): top bar, door and
+window pins projected onto the tour, speaker pins with a settings card, click-to-add (S key), sonar ripples and pulses in the blueprint, and the Jev chat bar (visible steps, suggestions the user applies or dismisses, mic button for the voice mode to come). Its state
 is `ui/store.ts`; `commands` there are the seams to the app. Doors and windows are demo data (`ui/mock.ts`) and the chat is a
 local stand-in (`ui/assistant.ts`) until the V2 scene state, Property Intelligence openings and the Jev relay land;
 speakers beyond the two MVP sources are preview only until the audio engine takes a source list.

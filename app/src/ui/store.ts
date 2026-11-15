@@ -38,7 +38,15 @@ export type Opening = {
   open: boolean;
 };
 
-export type ChatMessage = { id: number; role: 'user' | 'jev'; text: string };
+export type Step = { label: string; status: 'run' | 'done' | 'fail'; detail?: string };
+export type ProposalStatus = 'pending' | 'applied' | 'dismissed';
+export type ChatMessage =
+  | { id: number; kind: 'text'; role: 'user' | 'jev'; text: string }
+  /** What the agent is doing, step by step, so the user sees the whole process. */
+  | { id: number; kind: 'process'; steps: Step[] }
+  /** A change the agent suggests. Nothing happens until the user applies it. */
+  | { id: number; kind: 'proposal'; title: string; detail: string; changes: string[]; previewIds: string[]; status: ProposalStatus };
+export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type Selection = { kind: 'speaker' | 'opening'; id: string } | null;
 export type AudioState = 'off' | 'starting' | 'on';
 
@@ -61,7 +69,17 @@ export const ui = {
   chat: signal<ChatMessage[]>([]),
   chatOpen: signal(false),
   thinking: signal(false),
+  speaking: signal(false),
+  /** Voice input. The mic button flips it; speech recognition plugs into `commands.voice` later. */
+  listening: signal(false),
 };
+
+export function agentState(): AgentState {
+  if (ui.thinking.value) return 'thinking';
+  if (ui.listening.value) return 'listening';
+  if (ui.speaking.value) return 'speaking';
+  return 'idle';
+}
 
 /** Hooks the app fills in. The overlay never touches the viewer, worker or audio directly. */
 export const commands = {
@@ -71,9 +89,67 @@ export const commands = {
   /** Called after any change so the app can retrace or update audio. */
   onSpeakersChanged: (_speakers: Speaker[]) => {},
   onOpeningsChanged: (_openings: Opening[]) => {},
-  /** The agent. Resolves with the reply text. Replace with the Jev relay (v2-design.md 6). */
-  ask: (async (_text: string) => '') as (text: string) => Promise<string>,
+  /** The agent: report progress through `session` as it works. Replace with the Jev relay (v2-design.md 6). */
+  ask: (async (_text: string, _session: AgentSession) => {}) as (text: string, session: AgentSession) => Promise<void>,
+  /** Voice on or off. Hook up speech-to-text here; it should call `ui.listening.value = false` when it ends. */
+  voice: (_on: boolean) => {},
 };
+
+/** What an agent can show in the chat. The same calls fit a real streaming agent. */
+export type AgentSession = {
+  /** Start a visible step. Call the returned functions when it ends. */
+  step(label: string): { done(detail?: string): void; fail(detail?: string): void };
+  say(text: string): void;
+  /** Suggest a change; `apply` runs only if the user accepts. */
+  propose(p: { title: string; detail: string; changes: string[]; previewIds?: string[]; apply: () => void }): void;
+};
+
+const pendingApply = new Map<number, () => void>();
+
+export function createSession(): AgentSession {
+  let processId: number | null = null;
+  const patchSteps = (fn: (steps: Step[]) => Step[]) => {
+    ui.chat.value = ui.chat.value.map(m => (m.id === processId && m.kind === 'process' ? { ...m, steps: fn(m.steps) } : m));
+  };
+  return {
+    step(label) {
+      if (processId === null) {
+        processId = nextId++;
+        ui.chat.value = [...ui.chat.value.slice(-29), { id: processId, kind: 'process', steps: [] }];
+      }
+      const index = (ui.chat.value.find(m => m.id === processId) as Extract<ChatMessage, { kind: 'process' }>).steps.length;
+      patchSteps(steps => [...steps, { label, status: 'run' }]);
+      const end = (status: 'done' | 'fail') => (detail?: string) =>
+        patchSteps(steps => steps.map((st, i) => (i === index ? { ...st, status, detail } : st)));
+      return { done: end('done'), fail: end('fail') };
+    },
+    say(text) {
+      pushChat('jev', text);
+      ui.speaking.value = true;
+      setTimeout(() => (ui.speaking.value = false), Math.min(4000, 900 + text.length * 25));
+    },
+    propose({ title, detail, changes, previewIds = [], apply }) {
+      const id = nextId++;
+      pendingApply.set(id, apply);
+      ui.chat.value = [...ui.chat.value.slice(-29), { id, kind: 'proposal', title, detail, changes, previewIds, status: 'pending' }];
+    },
+  };
+}
+
+/** The user's answer to a suggestion. */
+export function resolveProposal(id: number, accept: boolean): void {
+  const apply = pendingApply.get(id);
+  pendingApply.delete(id);
+  ui.chat.value = ui.chat.value.map(m => (m.id === id && m.kind === 'proposal' && m.status === 'pending' ? { ...m, status: accept ? 'applied' : 'dismissed' } : m));
+  if (accept) apply?.();
+}
+
+/** Ids the agent's open suggestions would change, for the pins to light up. */
+export function previewedIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const m of ui.chat.value) if (m.kind === 'proposal' && m.status === 'pending') for (const id of m.previewIds) ids.add(id);
+  return ids;
+}
 
 let nextId = 1;
 export const newId = (prefix: string) => `${prefix}-${nextId++}`;
@@ -131,6 +207,6 @@ export function toggleOpening(id: string): void {
   if (o) setOpeningOpen([id], !o.open);
 }
 
-export function pushChat(role: ChatMessage['role'], text: string): void {
-  ui.chat.value = [...ui.chat.value.slice(-19), { id: nextId++, role, text }];
+export function pushChat(role: 'user' | 'jev', text: string): void {
+  ui.chat.value = [...ui.chat.value.slice(-29), { id: nextId++, kind: 'text', role, text }];
 }

@@ -2,7 +2,7 @@
 import { Volume2, VolumeX } from 'lucide-preact';
 import { project, useCamera } from './project';
 import { DoorIcon, WindowIcon } from './icons';
-import { ui, toggleOpening } from './store';
+import { previewedIds, ui, toggleOpening } from './store';
 
 const MAX_DISTANCE = 9;
 
@@ -13,6 +13,7 @@ export function Hotspots() {
   useCamera(pose, size);
   const selection = ui.selection.value;
   const placing = ui.placing.value;
+  const previewed = previewedIds();
 
   return (
     <div class="hotspots" aria-label="Controls in the tour">
@@ -26,7 +27,7 @@ export function Hotspots() {
           <button
             key={o.id}
             type="button"
-            class={`pin opening ${o.open ? 'is-open' : 'is-closed'} ${selected ? 'is-selected' : ''}`}
+            class={`pin opening ${o.open ? 'is-open' : 'is-closed'} ${selected ? 'is-selected' : ''} ${previewed.has(o.id) ? 'is-previewed' : ''}`}
             style={{ transform: `translate(${s.x}px, ${s.y}px) translate(-50%, -50%) scale(${scale})` }}
             aria-label={`${verb} ${o.label}`}
             aria-pressed={o.open}
@@ -54,7 +55,10 @@ export function Hotspots() {
             style={{ transform: `translate(${s.x}px, ${s.y}px) translate(-50%, -50%)` }}
             aria-label={`${sp.label}, settings`}
             disabled={placing}
-            onClick={() => (ui.selection.value = selected ? null : { kind: 'speaker', id: sp.id })}
+            onClick={() => {
+              ui.selection.value = selected ? null : { kind: 'speaker', id: sp.id };
+              if (!selected) ui.chatOpen.value = false; // the card and the conversation share the lower half
+            }}
           >
             {sp.enabled ? <Volume2 size={16} strokeWidth={2} /> : <VolumeX size={16} strokeWidth={2} />}
             <span class="pin-tip">

@@ -14,7 +14,7 @@ export function Inspector() {
 
   const s = project(sp.position, size);
   const left = s.visible ? Math.min(size.w - CARD_W - 16, Math.max(16, s.x + 26)) : size.w - CARD_W - 16;
-  const top = s.visible ? Math.min(size.h - 330, Math.max(72, s.y - 40)) : 88;
+  const top = s.visible ? Math.min(Math.max(72, size.h - 440), Math.max(72, s.y - 40)) : 88;
 
   return (
     <aside class="card inspector" style={{ left: `${left}px`, top: `${top}px`, width: `${CARD_W}px` }} aria-label={`${sp.label} settings`}>

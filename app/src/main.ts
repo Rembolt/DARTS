@@ -11,8 +11,8 @@ import { formatSimReady, startSim, type SimClient } from './sim/client';
 import { ReverbScheduler } from './sim/reverb-cache';
 import type { FromWorker, Vec3 } from './sim/types';
 import { mountUi } from './ui/mount';
-import { commands, ui, addSpeaker, setOpeningOpen, setOpenings, setSpeakers, type Speaker } from './ui/store';
-import { interpret } from './ui/assistant';
+import { commands, ui, addSpeaker, setOpenings, setSpeakers, type Speaker } from './ui/store';
+import { localAgent } from './ui/localAgent';
 import { mockOpenings } from './ui/mock';
 import { listenForPlacement } from './ui/placement';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
@@ -275,7 +275,7 @@ async function start(): Promise<void> {
   // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
   if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
   sdk.Camera.pose.subscribe(pose => {
-    ui.pose.value = pose;
+    ui.pose.value = { ...pose }; // the SDK may reuse one object; a copy makes the signal fire
     if (import.meta.env.DEV) (window as unknown as { __pose: string }).__pose = formatPose(pose);
     blueprint.setPose(pose);
     latestPose = pose;
@@ -336,16 +336,8 @@ async function start(): Promise<void> {
     if (body) body.style.cursor = on ? 'crosshair' : '';
   });
 
-  // The agent seam: replace this local stand-in with the Jev relay.
-  commands.ask = async text => {
-    await new Promise(r => setTimeout(r, 450));
-    const intent = interpret(text, ui.openings.value);
-    if (intent.kind === 'openings') setOpeningOpen(intent.ids, intent.open);
-    else if (intent.kind === 'place') ui.placing.value = true;
-    else if (intent.kind === 'blueprint') commands.toggleBlueprint();
-    else if (intent.kind === 'audio') commands.toggleAudio();
-    return intent.reply;
-  };
+  // The agent seam: replace the local stand-in with the Jev relay.
+  commands.ask = localAgent;
 
   if (import.meta.env.DEV) {
     const { installBlueprintCheck } = await import('./debug');

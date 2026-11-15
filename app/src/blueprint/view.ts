@@ -76,6 +76,25 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
     return renderer;
   };
 
+  // The sonar rings and pulses move on their own: a frame loop that runs only while the blueprint is shown and
+  // there is a trace to animate, and holds still for people who asked for less motion.
+  let shown = false;
+  let looping = false;
+  const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const startAnimation = () => {
+    if (looping || calm) return;
+    looping = true;
+    const step = (now: number) => {
+      if (!shown || !paths.animated) {
+        looping = false;
+        return;
+      }
+      paths.tick(now / 1000);
+      scheduler.request();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
   const scheduler = createScheduler(() => {
     const r = ensureRenderer();
     if (!posed) {
@@ -118,10 +137,14 @@ export function createBlueprint(canvas: HTMLCanvasElement): Blueprint {
     },
     setTrace(trace) {
       paths.set(trace);
+      paths.tick(calm ? 1 : performance.now() / 1000);
+      if (shown) startAnimation();
       scheduler.request();
     },
     setVisible(visible) {
       scheduler.setVisible(visible);
+      shown = visible;
+      if (visible) startAnimation();
     },
     resize(box, pixelRatio) {
       size = canvasSize(box, pixelRatio);
