@@ -91,9 +91,9 @@ A triangle's material comes from which way it faces: sideways is `wall`, facing 
 
 | Material | Absorption low / mid / high | Scattering | Blocking in dB low / mid / high |
 |---|---|---|---|
-| `wall` | 0.25 / 0.06 / 0.08 | 0.10 | 25 / 35 / 45 |
-| `floor` | 0.15 / 0.10 / 0.07 | 0.20 | 35 / 45 / 50 |
-| `ceiling` | 0.25 / 0.06 / 0.08 | 0.10 | 25 / 35 / 45 |
+| `wall` | 0.23 / 0.06 / 0.09 | 0.10 | 20 / 37 / 45 |
+| `floor` | 0.14 / 0.09 / 0.07 | 0.20 | 35 / 45 / 50 |
+| `ceiling` | 0.23 / 0.06 / 0.09 | 0.10 | 20 / 37 / 45 |
 
 - **Absorption:** the share of sound a surface soaks up at each bounce.
 - **Scattering:** the chance a bounce goes in a random direction and not like a mirror.
@@ -103,7 +103,7 @@ Two global values sit beside the table:
 - `furnishing: 0.15` is added to every surface's absorption, standing in for furniture.
 - `transmissionScale: 0.6` shrinks the blocking values so sound behind a wall stays audible in a demo. 1.0 is realistic.
 
-These numbers are starting values from memory, not from a measured table. Replace them with published values when there is time (open question Q4).
+Absorption was refitted to published tables, and wall and ceiling blocking to a stud partition (v2-design.md 4.1, `app/src/materials.reference.ts`). Scattering is still a guess. They are estimates (open question Q4).
 
 ### 4.3 Sources
 | Source | File | Position | Level |
@@ -125,7 +125,7 @@ Audio files:
 | Occlusion rays for the direct sound | 9, to points within 0.3 m of the source |
 | Early window | 80 ms after the direct sound |
 | Echo slots per source | 12 fixed directions |
-| Reverb job | 1,500 rays, up to 60 bounces |
+| Reverb job | 1,500 rays, up to 120 bounces (was 60: hard rooms were cut short) |
 | Speed of sound | 343 m/s |
 
 ## 5. The rendering pipeline
@@ -194,7 +194,7 @@ Twelve fixed directions in the world (the corners of an icosahedron) are the ech
 
 ### 5.5 Late reverb (when the listener enters a different room)
 1. Place a virtual source 1 m from the listener.
-2. Run the same tracing as 5.3 with 1,500 rays and up to 60 bounces, with no cutting through walls.
+2. Run the same tracing as 5.3 with 1,500 rays and up to 120 bounces, with no cutting through walls.
 3. Add each contribution's energy to a histogram of 5 ms steps, per band.
 4. Sum the histogram backwards from the end to get the decay curve. Find the time it takes to fall from −5 dB to −25 dB and multiply by 3. That is the echo time for that band. Clamp to 0.2–2.5 s.
 5. Cache the result under the room's id (`Room.current` from the viewer).

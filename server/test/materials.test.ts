@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { MATERIALS, ROOM_TABLE, roomType } from '../src/shared/materials.js';
 
 describe('material library', () => {
-  it('has the 15 library rows with the design values', () => {
+  it('has the 15 library rows, with values taken from published tables (app/src/materials.reference.test.ts)', () => {
     expect(Object.keys(MATERIALS)).toHaveLength(15);
-    expect(MATERIALS.carpet).toEqual({ absorption: [0.08, 0.35, 0.60], scattering: 0.30, blockingDb: [35, 45, 50] });
-    expect(MATERIALS.glass.blockingDb).toEqual([18, 25, 28]);
+    expect(MATERIALS.carpet).toEqual({ absorption: [0.07, 0.38, 0.65], scattering: 0.30, blockingDb: [35, 45, 50] });
+    expect(MATERIALS.glass.blockingDb).toEqual([21, 32, 36]);
   });
   it('names room types', () => {
     expect(roomType('Primary Bedroom')).toBe('bedroom');

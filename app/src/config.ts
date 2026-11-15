@@ -2,11 +2,11 @@
 import type { Material, SimConfig, Vec3 } from './sim/types';
 import type { SourceKind } from './audio/engine';
 
-// Starting values from memory, not from a measured table. See mvp-design.md 4.2.
+// Fitted to published octave-band tables (materials.reference.ts); still estimates. See mvp-design.md 4.2.
 export const MATERIALS: SimConfig['materials'] = {
-  wall: { absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [25, 35, 45] },
-  floor: { absorption: [0.15, 0.10, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] },
-  ceiling: { absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [25, 35, 45] },
+  wall: { absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [20, 37, 45] },
+  floor: { absorption: [0.14, 0.09, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] },
+  ceiling: { absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [20, 37, 45] },
 } satisfies Record<string, Material>;
 
 export const SIM = {
@@ -22,24 +22,28 @@ export const SIM = {
   earlyWindow: 0.08,
   maxDrawnPaths: 40,
   reverbRays: 1500,
-  reverbBounces: 60,
+  reverbBounces: 120, // 60 cut hard rooms short: an empty tiled room read about 20% under its Eyring time
   blueprintEdgeAngle: 25,
   speedOfSound: 343,
 } satisfies Omit<SimConfig, 'materials' | 'slotDirections'>;
 
-/** The sound library (v2-design 5.3, v3-design 6.6). Every file is CC0 or public domain: app/public/audio/CREDITS.md. */
+/** The sound library (v2-design 5.3, v3-design 6.6). Each file's licence and credit: app/public/audio/CREDITS.md. */
 export type SoundId = 'highway' | 'road' | 'city_ambience' | 'nature_ambience' | 'industrial_ambience' | 'commercial_ambience'
-  | 'residential_ambience' | 'train' | 'plane' | 'music' | 'conversation' | 'footstep_hard' | 'footstep_soft';
+  | 'residential_ambience' | 'train' | 'plane' | 'music' | 'conversation' | 'speaking' | 'opening' | 'footstep_hard' | 'footstep_soft';
 
 /**
  * Per sound: its file, the kind it plays as and its default level in dB relative to the MVP song. Outside sounds placed
  * from the surroundings take their level from the facade level instead (audio/surroundings.ts).
  * `road` and `residential_ambience` are not in V2's table: road like the city loop, residential from its 50 dB facade.
  * Footsteps play from `footstep_<floor>_1..4.ogg` (audio/footsteps.ts); their entries here only carry the level.
+ * `conversation` is a crowd talking, `speaking` one person. `opening` plays once when a door or window is opened or
+ * closed (audio/opening-sound.ts); it is not a source.
  */
 export const SOUNDS: Record<SoundId, { file: string; kind: SourceKind; levelDb: number }> = {
   music: { file: '/audio/music.ogg', kind: 'point', levelDb: 0 },
   conversation: { file: '/audio/conversation.ogg', kind: 'point', levelDb: -6 },
+  speaking: { file: '/audio/speaking.ogg', kind: 'point', levelDb: -6 },
+  opening: { file: '/audio/opening.ogg', kind: 'point', levelDb: -12 },
   highway: { file: '/audio/highway.ogg', kind: 'ambient', levelDb: -12 },
   road: { file: '/audio/road.ogg', kind: 'ambient', levelDb: -14 },
   city_ambience: { file: '/audio/city_ambience.ogg', kind: 'ambient', levelDb: -14 },

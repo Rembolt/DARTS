@@ -23,7 +23,7 @@ const ROOMS = [{ id: 'kitchen', area: 10 }, { id: 'bedroom', area: 30 }];
 
 describe('resolveBlend', () => {
   it('averages absorption by weight', () => {
-    expect(resolveBlend({ parts: [{ material: 'wood_floor', weight: 0.7 }, { material: 'carpet', weight: 0.3 }] }).absorption[1]).toBeCloseTo(0.175, 5);
+    expect(resolveBlend({ parts: [{ material: 'wood_floor', weight: 0.7 }, { material: 'carpet', weight: 0.3 }] }).absorption[1]).toBeCloseTo(0.177, 5); // 0.7 · 0.09 + 0.3 · 0.38
   });
 
   it('averages scattering by weight', () => {
@@ -31,8 +31,8 @@ describe('resolveBlend', () => {
   });
 
   it('averages blocking as energy, so the weak part dominates', () => {
-    // glass 25 dB, concrete 55 dB at mid
-    expect(resolveBlend({ parts: [{ material: 'glass', weight: 0.4 }, { material: 'concrete', weight: 0.6 }] }).blockingDb[1]).toBeCloseTo(28.97, 1);
+    // glass 32 dB, concrete 52 dB at mid
+    expect(resolveBlend({ parts: [{ material: 'glass', weight: 0.4 }, { material: 'concrete', weight: 0.6 }] }).blockingDb[1]).toBeCloseTo(35.91, 1);
   });
 
   it('drops parts under 0.1 and renormalises', () => {
@@ -66,7 +66,7 @@ describe('effectiveAbsorption', () => {
   it('clamps absorption plus furnishing to 0.99, not a perfect absorber', () => {
     const a = effectiveAbsorption(lib('acoustic_panel'), 0.15);
     expect(a[2]).toBe(0.99);
-    expect(a[0]).toBeCloseTo(0.55, 10);
+    expect(a[0]).toBeCloseTo(0.5, 10);
   });
 });
 

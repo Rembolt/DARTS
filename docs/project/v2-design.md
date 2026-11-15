@@ -125,28 +125,33 @@ materials that a class can be set to.
 
 | Material | Absorption low / mid / high | Scattering | Blocking dB low / mid / high |
 |---|---|---|---|
-| `drywall` (MVP `wall`, `ceiling`) | 0.25 / 0.06 / 0.08 | 0.10 | 25 / 35 / 45 |
-| `insulated_drywall` | 0.30 / 0.08 / 0.08 | 0.10 | 35 / 47 / 55 |
-| `wood_floor` (MVP `floor`) | 0.15 / 0.10 / 0.07 | 0.20 | 35 / 45 / 50 |
+| `drywall` (MVP `wall`, `ceiling`) | 0.23 / 0.06 / 0.09 | 0.10 | 20 / 37 / 45 |
+| `insulated_drywall` | 0.28 / 0.08 / 0.09 | 0.10 | 28 / 45 / 50 |
+| `wood_floor` (MVP `floor`) | 0.14 / 0.09 / 0.07 | 0.20 | 35 / 45 / 50 |
 | `tile` | 0.01 / 0.01 / 0.02 | 0.05 | 40 / 50 / 55 |
-| `concrete` | 0.01 / 0.02 / 0.03 | 0.05 | 45 / 55 / 60 |
-| `carpet` | 0.08 / 0.35 / 0.60 | 0.30 | 35 / 45 / 50 |
-| `wood_panel` | 0.30 / 0.10 / 0.08 | 0.15 | 25 / 30 / 35 |
-| `acoustic_panel` | 0.40 / 0.85 / 0.90 | 0.40 | 25 / 35 / 45 |
-| `glass` (closed windows, section 7) | 0.30 / 0.04 / 0.02 | 0.05 | 18 / 25 / 28 |
-| `door` (closed doors, section 7) | 0.15 / 0.08 / 0.08 | 0.10 | 18 / 25 / 30 |
-| `vinyl` (new, for 4.4) | 0.02 / 0.03 / 0.03 | 0.05 | 35 / 45 / 50 |
+| `concrete` | 0.01 / 0.02 / 0.02 | 0.05 | 41 / 52 / 65 |
+| `carpet` | 0.07 / 0.38 / 0.65 | 0.30 | 35 / 45 / 50 |
+| `wood_panel` | 0.27 / 0.17 / 0.11 | 0.15 | 25 / 30 / 35 |
+| `acoustic_panel` | 0.35 / 0.81 / 0.89 | 0.40 | 25 / 35 / 45 |
+| `glass` (closed windows, section 7) | 0.29 / 0.15 / 0.05 | 0.05 | 21 / 32 / 36 |
+| `door` (closed doors, section 7) | 0.13 / 0.08 / 0.10 | 0.10 | 18 / 25 / 30 |
+| `vinyl` (new, for 4.4) | 0.02 / 0.03 / 0.02 | 0.05 | 35 / 45 / 50 |
 | `wall_tile` (new, for 4.4) | 0.01 / 0.01 / 0.02 | 0.05 | 28 / 38 / 48 |
-| `plaster` (new, for 4.4) | 0.02 / 0.03 / 0.04 | 0.05 | 35 / 45 / 50 |
-| `brick_veneer` (new, exterior walls only, 4.4) | 0.25 / 0.06 / 0.08 | 0.10 | 40 / 55 / 60 |
-| `siding_wall` (new, exterior walls only, 4.4) | 0.25 / 0.06 / 0.08 | 0.10 | 30 / 42 / 50 |
+| `plaster` (new, for 4.4) | 0.01 / 0.03 / 0.05 | 0.05 | 35 / 45 / 50 |
+| `brick_veneer` (new, exterior walls only, 4.4) | 0.23 / 0.06 / 0.09 | 0.10 | 40 / 55 / 60 |
+| `siding_wall` (new, exterior walls only, 4.4) | 0.23 / 0.06 / 0.09 | 0.10 | 30 / 42 / 50 |
 
-These are rough values, like the MVP's: transmission loss from the table in acoustic-experience.md section 3,
-absorption from memory of standard tables. They are not measured. Replace them with a published table when there is time.
+Absorption is fitted to published octave-band tables (Hall, "Physics of Sound" Table 15.1 on HyperPhysics, and the
+RoomTreat table, both lab values). An octave centred on a band edge (250 Hz, 2 kHz) is split half and half between its two
+bands: low = 125 Hz and half of 250 Hz, mid = half of 250 Hz, 500 Hz, 1 kHz and half of 2 kHz, high = half of 2 kHz and 4 kHz.
+Blocking is fitted for `drywall` (UFC 3-450-01 Table 4-6, stud partition), `glass` (mass law, 6 mm, Rw 32) and `concrete`
+(Riverbank TL-71-247), and `insulated_drywall` is drywall plus the gap between UFC types 1 and 2. The other blocking
+values, every scattering value and the furnishing levels are still unmeasured guesses. The data and the allowed distance
+from it are in `app/src/materials.reference.ts` and its test. They are still estimates, not measurements of any room.
 The rows marked new are rougher still. `brick_veneer` and `siding_wall` are whole exterior wall builds: the inside face
 is drywall (hence drywall's absorption), the outside layer sets the blocking.
 
-**Clamp:** absorption plus furnishing can now pass 1 (`acoustic_panel` high band 0.90 + furnishing 0.15).
+**Clamp:** absorption plus furnishing can now pass 1 (`acoustic_panel` high band 0.89 + furnishing 0.15).
 The tracer today clamps the strength at 0, which makes such a surface a perfect absorber. The worker clamps
 `absorption + furnishing` to at most 0.99 per band instead.
 

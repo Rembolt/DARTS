@@ -3,9 +3,10 @@ import { MATERIALS, SIM, SOUNDS, MAX_SOURCES, NORTH_OFFSET_DEG, AUDIO, SLOT_DIRE
 
 describe('materials (spec 4.2)', () => {
   it('has the spec values', () => {
-    expect(MATERIALS.wall).toEqual({ absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [25, 35, 45] });
-    expect(MATERIALS.floor).toEqual({ absorption: [0.15, 0.10, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] });
-    expect(MATERIALS.ceiling).toEqual({ absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [25, 35, 45] });
+    // Fitted to published octave-band tables, see materials.reference.test.ts.
+    expect(MATERIALS.wall).toEqual({ absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [20, 37, 45] });
+    expect(MATERIALS.floor).toEqual({ absorption: [0.14, 0.09, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] });
+    expect(MATERIALS.ceiling).toEqual({ absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [20, 37, 45] });
     expect(SIM.furnishing).toBe(0.15);
     expect(SIM.transmissionScale).toBe(0.6);
   });
@@ -21,7 +22,7 @@ describe('simulation settings (spec 4.4)', () => {
     expect(SIM).toMatchObject({
       raysPerTrace: 2000, bounces: 4, maxLegWalls: 2, scatteringFloor: 0.3,
       occlusionRays: 9, occlusionRadius: 0.3, wallMergeDistance: 0.5, earlyWindow: 0.08,
-      maxDrawnPaths: 40, reverbRays: 1500, reverbBounces: 60, blueprintEdgeAngle: 25, speedOfSound: 343,
+      maxDrawnPaths: 40, reverbRays: 1500, reverbBounces: 120, blueprintEdgeAngle: 25, speedOfSound: 343,
     });
   });
 });

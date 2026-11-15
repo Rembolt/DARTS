@@ -10,21 +10,21 @@ export type Material = {
 };
 
 export const MATERIALS = {
-  drywall: { absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [25, 35, 45] },
-  insulated_drywall: { absorption: [0.30, 0.08, 0.08], scattering: 0.10, blockingDb: [35, 47, 55] },
-  wood_floor: { absorption: [0.15, 0.10, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] },
+  drywall: { absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [20, 37, 45] },
+  insulated_drywall: { absorption: [0.28, 0.08, 0.09], scattering: 0.10, blockingDb: [28, 45, 50] },
+  wood_floor: { absorption: [0.14, 0.09, 0.07], scattering: 0.20, blockingDb: [35, 45, 50] },
   tile: { absorption: [0.01, 0.01, 0.02], scattering: 0.05, blockingDb: [40, 50, 55] },
-  concrete: { absorption: [0.01, 0.02, 0.03], scattering: 0.05, blockingDb: [45, 55, 60] },
-  carpet: { absorption: [0.08, 0.35, 0.60], scattering: 0.30, blockingDb: [35, 45, 50] },
-  wood_panel: { absorption: [0.30, 0.10, 0.08], scattering: 0.15, blockingDb: [25, 30, 35] },
-  acoustic_panel: { absorption: [0.40, 0.85, 0.90], scattering: 0.40, blockingDb: [25, 35, 45] },
-  glass: { absorption: [0.30, 0.04, 0.02], scattering: 0.05, blockingDb: [18, 25, 28] },
-  door: { absorption: [0.15, 0.08, 0.08], scattering: 0.10, blockingDb: [18, 25, 30] },
-  vinyl: { absorption: [0.02, 0.03, 0.03], scattering: 0.05, blockingDb: [35, 45, 50] },
+  concrete: { absorption: [0.01, 0.02, 0.02], scattering: 0.05, blockingDb: [41, 52, 65] },
+  carpet: { absorption: [0.07, 0.38, 0.65], scattering: 0.30, blockingDb: [35, 45, 50] },
+  wood_panel: { absorption: [0.27, 0.17, 0.11], scattering: 0.15, blockingDb: [25, 30, 35] },
+  acoustic_panel: { absorption: [0.35, 0.81, 0.89], scattering: 0.40, blockingDb: [25, 35, 45] },
+  glass: { absorption: [0.29, 0.15, 0.05], scattering: 0.05, blockingDb: [21, 32, 36] },
+  door: { absorption: [0.13, 0.08, 0.1], scattering: 0.10, blockingDb: [18, 25, 30] },
+  vinyl: { absorption: [0.02, 0.03, 0.02], scattering: 0.05, blockingDb: [35, 45, 50] },
   wall_tile: { absorption: [0.01, 0.01, 0.02], scattering: 0.05, blockingDb: [28, 38, 48] },
-  plaster: { absorption: [0.02, 0.03, 0.04], scattering: 0.05, blockingDb: [35, 45, 50] },
-  brick_veneer: { absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [40, 55, 60] },
-  siding_wall: { absorption: [0.25, 0.06, 0.08], scattering: 0.10, blockingDb: [30, 42, 50] },
+  plaster: { absorption: [0.01, 0.03, 0.05], scattering: 0.05, blockingDb: [35, 45, 50] },
+  brick_veneer: { absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [40, 55, 60] },
+  siding_wall: { absorption: [0.23, 0.06, 0.09], scattering: 0.10, blockingDb: [30, 42, 50] },
 } as const satisfies Record<string, Material>;
 
 export type MaterialName = keyof typeof MATERIALS;

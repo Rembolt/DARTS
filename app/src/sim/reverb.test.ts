@@ -1,6 +1,6 @@
 import { it, expect, vi } from 'vitest';
 
-vi.setConfig({ testTimeout: 20_000 }); // 300 rays × 60 bounces per run; slow when other agents load the machine
+vi.setConfig({ testTimeout: 20_000 }); // 300 rays × 120 bounces per run; slow when other agents load the machine
 import { simConfig } from '../config';
 import { traceReverb, virtualSource } from './reverb';
 import { mulberry32 } from './sampling';

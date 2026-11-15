@@ -6,17 +6,17 @@ export type Surface = 'wall' | 'floor' | 'ceiling';
 export type MaterialDef = Material & { id: string; label: string; surfaces: Surface[]; color: string; feel: string };
 
 export const MATERIALS: MaterialDef[] = [
-  { id: 'drywall', label: 'Drywall', surfaces: ['wall', 'ceiling'], color: '#f3f0ea', feel: 'Typical walls', absorption: [0.25, 0.06, 0.08], scattering: 0.1, blockingDb: [25, 35, 45] },
-  { id: 'insulated_drywall', label: 'Insulated drywall', surfaces: ['wall'], color: '#e9e6dc', feel: 'Blocks more street noise', absorption: [0.3, 0.08, 0.08], scattering: 0.1, blockingDb: [35, 47, 55] },
-  { id: 'plaster', label: 'Plaster', surfaces: ['wall', 'ceiling'], color: '#efe8dc', feel: 'Hard and bright', absorption: [0.02, 0.03, 0.04], scattering: 0.05, blockingDb: [35, 45, 50] },
+  { id: 'drywall', label: 'Drywall', surfaces: ['wall', 'ceiling'], color: '#f3f0ea', feel: 'Typical walls', absorption: [0.23, 0.06, 0.09], scattering: 0.1, blockingDb: [20, 37, 45] },
+  { id: 'insulated_drywall', label: 'Insulated drywall', surfaces: ['wall'], color: '#e9e6dc', feel: 'Blocks more street noise', absorption: [0.28, 0.08, 0.09], scattering: 0.1, blockingDb: [28, 45, 50] },
+  { id: 'plaster', label: 'Plaster', surfaces: ['wall', 'ceiling'], color: '#efe8dc', feel: 'Hard and bright', absorption: [0.01, 0.03, 0.05], scattering: 0.05, blockingDb: [35, 45, 50] },
   { id: 'wall_tile', label: 'Wall tile', surfaces: ['wall'], color: '#d9e3df', feel: 'Very live, rings', absorption: [0.01, 0.01, 0.02], scattering: 0.05, blockingDb: [28, 38, 48] },
-  { id: 'wood_panel', label: 'Wood panel', surfaces: ['wall', 'ceiling'], color: '#d8b98a', feel: 'Warm, a little soft', absorption: [0.3, 0.1, 0.08], scattering: 0.15, blockingDb: [25, 30, 35] },
-  { id: 'acoustic_panel', label: 'Acoustic panel', surfaces: ['wall', 'ceiling'], color: '#b9c3a2', feel: 'Absorbs the room tone', absorption: [0.4, 0.85, 0.9], scattering: 0.4, blockingDb: [25, 35, 45] },
-  { id: 'concrete', label: 'Concrete', surfaces: ['wall', 'floor'], color: '#cdc8bf', feel: 'Hard, blocks well', absorption: [0.01, 0.02, 0.03], scattering: 0.05, blockingDb: [45, 55, 60] },
-  { id: 'wood_floor', label: 'Wood floor', surfaces: ['floor'], color: '#d3ac78', feel: 'Typical floors', absorption: [0.15, 0.1, 0.07], scattering: 0.2, blockingDb: [35, 45, 50] },
+  { id: 'wood_panel', label: 'Wood panel', surfaces: ['wall', 'ceiling'], color: '#d8b98a', feel: 'Warm, a little soft', absorption: [0.27, 0.17, 0.11], scattering: 0.15, blockingDb: [25, 30, 35] },
+  { id: 'acoustic_panel', label: 'Acoustic panel', surfaces: ['wall', 'ceiling'], color: '#b9c3a2', feel: 'Absorbs the room tone', absorption: [0.35, 0.81, 0.89], scattering: 0.4, blockingDb: [25, 35, 45] },
+  { id: 'concrete', label: 'Concrete', surfaces: ['wall', 'floor'], color: '#cdc8bf', feel: 'Hard, blocks well', absorption: [0.01, 0.02, 0.02], scattering: 0.05, blockingDb: [41, 52, 65] },
+  { id: 'wood_floor', label: 'Wood floor', surfaces: ['floor'], color: '#d3ac78', feel: 'Typical floors', absorption: [0.14, 0.09, 0.07], scattering: 0.2, blockingDb: [35, 45, 50] },
   { id: 'tile', label: 'Tile', surfaces: ['floor'], color: '#c7d1d0', feel: 'Hard, rings longer', absorption: [0.01, 0.01, 0.02], scattering: 0.05, blockingDb: [40, 50, 55] },
-  { id: 'vinyl', label: 'Vinyl', surfaces: ['floor'], color: '#d6cfc0', feel: 'Fairly hard', absorption: [0.02, 0.03, 0.03], scattering: 0.05, blockingDb: [35, 45, 50] },
-  { id: 'carpet', label: 'Carpet', surfaces: ['floor'], color: '#b8a698', feel: 'Soft, takes the highs', absorption: [0.08, 0.35, 0.6], scattering: 0.3, blockingDb: [35, 45, 50] },
+  { id: 'vinyl', label: 'Vinyl', surfaces: ['floor'], color: '#d6cfc0', feel: 'Fairly hard', absorption: [0.02, 0.03, 0.02], scattering: 0.05, blockingDb: [35, 45, 50] },
+  { id: 'carpet', label: 'Carpet', surfaces: ['floor'], color: '#b8a698', feel: 'Soft, takes the highs', absorption: [0.07, 0.38, 0.65], scattering: 0.3, blockingDb: [35, 45, 50] },
 ];
 
 export const SURFACES: { id: Surface; label: string }[] = [
