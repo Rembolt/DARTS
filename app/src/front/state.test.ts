@@ -106,4 +106,11 @@ describe('save and load', () => {
     expect(load(memory({ 'front:v1': 'null' }))).toEqual(EMPTY);
     expect(load(memory())).toEqual(EMPTY);
   });
+
+  it('mapFocus moves the map to the right city and the next question clears it', () => {
+    const focused = reduce(EMPTY, { type: 'mapFocus', lat: 34.05, lon: -118.25, radiusKm: 2, reason: 'Downtown LA' });
+    expect(focused.city).toBe('Los Angeles');
+    expect(focused.focus).toMatchObject({ radiusKm: 2, reason: 'Downtown LA' });
+    expect(reduce(focused, { type: 'ask', text: 'again' }).focus).toBeNull();
+  });
 });

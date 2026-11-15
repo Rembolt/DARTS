@@ -128,5 +128,67 @@ export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'open'; modelId: string; reason: string }
   | { type: 'placeSound'; room: string; sound: string }
+  | { type: 'mapFocus'; lat: number; lon: number; radiusKm: number; reason: string }
   | { type: 'notPossible'; reason: NotPossible }
   | { type: 'done' };
+
+// ---- City map (front door): a wide satellite per city, and sharper tiles the agent zooms into ----
+
+export type MapBox = { north: number; south: number; east: number; west: number };
+/** The bounds of a city's satellite image, in degrees. The image is `width` × `height` px and covers exactly this box. */
+export type CityView = MapBox & { slug: string; name: City; width: number; height: number; imageUrl: string };
+export type Place = { modelId: string; address: string; city: City; lat: number; lon: number };
+
+export const CITY_IMAGE = { width: 1600, height: 1200 } as const;
+const M_PER_DEG = 111_320;
+
+/** A 4:3 box (in metres) `heightKm` tall, centred on a point. */
+export function boxAround(lat: number, lon: number, heightKm: number): MapBox {
+  const halfLat = (heightKm * 1000) / 2 / M_PER_DEG;
+  const halfLon = (halfLat * (CITY_IMAGE.width / CITY_IMAGE.height)) / Math.cos((lat * Math.PI) / 180);
+  return { north: lat + halfLat, south: lat - halfLat, east: lon + halfLon, west: lon - halfLon };
+}
+
+/** Where each city's image is centred and how tall it is: wide, so the whole metro is one picture. */
+const CITY_FRAMES: { slug: string; name: City; lat: number; lon: number; heightKm: number }[] = [
+  { slug: 'houston', name: 'Houston', lat: 29.8, lon: -95.41, heightKm: 80 },
+  { slug: 'los-angeles', name: 'Los Angeles', lat: 34.036, lon: -118.343, heightKm: 40 },
+];
+
+export const CITY_VIEWS: readonly CityView[] = CITY_FRAMES.map(f => ({
+  ...boxAround(f.lat, f.lon, f.heightKm), slug: f.slug, name: f.name,
+  width: CITY_IMAGE.width, height: CITY_IMAGE.height, imageUrl: `/api/city/${f.slug}/image.jpg`,
+}));
+
+/** The city whose picture holds this point, or null (outside Houston and Los Angeles). */
+export function cityAt(lat: number, lon: number): CityView | null {
+  return CITY_VIEWS.find(v => lat <= v.north && lat >= v.south && lon <= v.east && lon >= v.west) ?? null;
+}
+
+/** The heights (km) of the sharper tiles. Few levels and a snapped centre, so tiles repeat and the cache works. */
+export const DETAIL_HEIGHTS_KM = [2, 5, 12, 25] as const;
+
+export type DetailTile = MapBox & { lat: number; lon: number; heightKm: number; url: string };
+
+/** The tile that shows a circle of `radiusKm` around a point, or null when it is wider than the biggest tile. */
+export function detailTile(lat: number, lon: number, radiusKm: number): DetailTile | null {
+  const heightKm = DETAIL_HEIGHTS_KM.find(h => h >= radiusKm * 2);
+  if (heightKm === undefined) return null;
+  return detailTileAt(lat, lon, heightKm);
+}
+
+/** The tile of exactly this height; the centre is snapped to a quarter of the height. */
+export function detailTileAt(lat: number, lon: number, heightKm: number): DetailTile {
+  const stepLat = heightKm / 4 / (M_PER_DEG / 1000);
+  const snappedLat = Math.round(lat / stepLat) * stepLat;
+  const stepLon = stepLat / Math.cos((snappedLat * Math.PI) / 180);
+  const snappedLon = Math.round(lon / stepLon) * stepLon;
+  const la = Number(snappedLat.toFixed(5));
+  const lo = Number(snappedLon.toFixed(5));
+  return { ...boxAround(la, lo, heightKm), lat: la, lon: lo, heightKm, url: `/api/map.jpg?lat=${la}&lon=${lo}&h=${heightKm}` };
+}
+
+/** The whole-country picture the front door opens on. Vexcel's coverage is patchy at this scale, so it is NASA Blue Marble. */
+export const USA_VIEW: MapBox & { width: number; height: number; imageUrl: string } = {
+  ...boxAround(38.5, -97, 3600), width: CITY_IMAGE.width, height: CITY_IMAGE.height, imageUrl: '/api/usa/image.jpg',
+};

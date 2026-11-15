@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SERVER_HOST, parsePort } from './address.js';
 import { createAgent } from './agent/index.js';
+import { createCityMaps } from './city/index.js';
+import { cityRouter } from './city/routes.js';
 import { createApp } from './app.js';
 import { loadEnv } from './env.js';
 import { loadAllowedIds } from './ids.js';
@@ -46,12 +48,14 @@ try {
     pi,
   });
   const agent = createAgent({ env, search, quick });
+  const cities = createCityMaps({ cacheDir, env });
   const app = createApp(env, {
     bundleDir,
     mesh,
     allowedIds,
     wideRouters: [jevRouter({ env })],
     routers: [
+      cityRouter({ cities, search }),
       apiRouter({ search, quick, surroundings, agent, allowedIds }),
       v2Router({ pi, lookup: id => search.lookup(id), allowedIds, env, cacheDir }),
     ],

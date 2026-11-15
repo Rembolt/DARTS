@@ -210,8 +210,11 @@ describe('the front door', () => {
       summaries: [OK], highlighted: null, running: true, staleCards: false,
     });
     const { fetchFn } = server();
-    startFrontDoor(root, { fetch: fetchFn, storage, navigate: () => {} });
-    expect(textarea().value).toBe('record');
+    startFrontDoor(root, { fetch: fetchFn, storage, navigate: () => {}, returning: false });
+    expect(root.querySelector('.fd-card')).toBeNull(); // a refresh or a fresh visit starts clean
+    expect(q('.fd-answer').textContent).toBe('');
+    startFrontDoor(root, { fetch: fetchFn, storage, navigate: () => {}, returning: true });
+    expect(q('.msg.user').textContent).toBe('record'); // the question comes back as a chat bubble
     expect(q('.fd-answer').textContent).toBe('Best fit');
     expect(root.querySelectorAll('.fd-card')).toHaveLength(1);
     expect(askButton().textContent).toBe('Ask');
@@ -227,7 +230,49 @@ describe('the front door', () => {
     agents[0].push({ type: 'text', text: '<b>bold</b>' });
     agents[0].push({ type: 'done' });
     await vi.waitFor(() => expect(askButton().textContent).toBe('Ask'));
-    expect(root.querySelector('img')).toBeNull();
+    expect(root.querySelector('.fd-side img')).toBeNull(); // the map's satellite images are the only ones on the page
     expect(root.querySelector('.fd-answer b')).toBeNull();
+  });
+  it('shows both cities to pick from, and the picked city narrows the question', async () => {
+    const { fetchFn, agents } = server();
+    startFrontDoor(root, { fetch: fetchFn, storage: memory(), navigate: () => {} });
+    expect(root.querySelectorAll('.fd-citymark')).toHaveLength(2); // the first view is the country, with the two cities marked
+    expect(q('.fd-marks').hidden).toBe(false);
+    q<HTMLButtonElement>('.fd-citymark[data-city="Los Angeles"]').click();
+    expect(q('.fd-marks').hidden).toBe(true);
+    expect(Number(q('.fd-stage').dataset.zoom)).toBeGreaterThan(10); // the camera went from the country into the city
+    expect(Array.from(root.querySelectorAll('.fd-chip')).map(c => c.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    type('a quiet studio');
+    enter();
+    await vi.waitFor(() => expect(agents).toHaveLength(1));
+    expect(agents[0].body).toEqual({ text: 'a quiet studio (in Los Angeles)' });
+  });
+
+  it('leaves the question alone when it names a city already', async () => {
+    const { fetchFn, agents } = server();
+    startFrontDoor(root, { fetch: fetchFn, storage: memory(), navigate: () => {} });
+    q<HTMLButtonElement>('.fd-citymark[data-city="Los Angeles"]').click();
+    type('a quiet office in Houston');
+    enter();
+    await vi.waitFor(() => expect(agents).toHaveLength(1));
+    expect(agents[0].body).toEqual({ text: 'a quiet office in Houston' });
+  });
+
+  it('puts a pin on the map for each result and follows the results to their city', async () => {
+    const places = [{ modelId: 'aaaaaaaaaaa', address: '1234 Oak St', city: 'Houston', lat: 29.76, lon: -95.37 }];
+    const base = server();
+    const fetchFn = (async (url: string, init?: RequestInit) =>
+      String(url).startsWith('/api/places')
+        ? new Response(JSON.stringify(places), { status: 200 })
+        : base.fetchFn(url, init)) as unknown as typeof fetch;
+    startFrontDoor(root, { fetch: fetchFn, storage: memory(), navigate: () => {} });
+    q<HTMLButtonElement>('.fd-citymark[data-city="Los Angeles"]').click();
+    type('x');
+    enter();
+    await vi.waitFor(() => expect(base.agents).toHaveLength(1));
+    base.agents[0].push({ type: 'cards', summaries: [OK] });
+    await vi.waitFor(() => expect(root.querySelectorAll('.fd-pin')).toHaveLength(1));
+    expect(root.querySelector('.fd-chip[aria-pressed="true"]')?.textContent).toBe('Houston');
+    expect(root.querySelector('.fd-pin .fd-pin-label')?.textContent).toBe('82% fit · 1234 Oak St');
   });
 });

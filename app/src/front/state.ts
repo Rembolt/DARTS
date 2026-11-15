@@ -1,4 +1,4 @@
-import type { AgentEvent, NotPossible, QuickSummary } from '../../../server/src/shared/contract';
+import { cityAt, type AgentEvent, type City, type NotPossible, type QuickSummary } from '../../../server/src/shared/contract';
 
 /**
  * What the front door shows, kept across the trip into a tour and back (sessionStorage).
@@ -9,16 +9,20 @@ export type FrontState = {
   conversationId: string | null; question: string; statusLines: string[]; answer: string;
   notPossible: NotPossible[]; summaries: QuickSummary[]; highlighted: string | null; running: boolean;
   staleCards: boolean;
+  /** The city picked on the map, or null before one is picked. */
+  city: City | null;
+  /** Where the agent pointed the map (a `mapFocus` event), until the next question. */
+  focus: { lat: number; lon: number; radiusKm: number; reason: string } | null;
 };
 
 export const EMPTY: FrontState = {
   conversationId: null, question: '', statusLines: [], answer: '', notPossible: [], summaries: [],
-  highlighted: null, running: false, staleCards: false,
+  highlighted: null, running: false, staleCards: false, city: null, focus: null,
 };
 
 const KEY = 'front:v1';
 
-export type FrontAction = AgentEvent | { type: 'ask'; text: string } | { type: 'stop' };
+export type FrontAction = AgentEvent | { type: 'ask'; text: string } | { type: 'stop' } | { type: 'city'; city: City | null };
 
 function merge(old: QuickSummary[], incoming: QuickSummary[]): QuickSummary[] {
   const byId = new Map(old.map(s => [s.modelId, s] as const));
@@ -29,7 +33,13 @@ function merge(old: QuickSummary[], incoming: QuickSummary[]): QuickSummary[] {
 export function reduce(state: FrontState, event: FrontAction): FrontState {
   switch (event.type) {
     case 'ask':
-      return { ...state, question: event.text, statusLines: [], answer: '', notPossible: [], highlighted: null, running: true, staleCards: true };
+      return { ...state, question: event.text, statusLines: [], answer: '', notPossible: [], highlighted: null, running: true, staleCards: true, focus: null };
+    case 'mapFocus': {
+      const city = cityAt(event.lat, event.lon)?.name ?? state.city;
+      return { ...state, city, focus: { lat: event.lat, lon: event.lon, radiusKm: event.radiusKm, reason: event.reason } };
+    }
+    case 'city':
+      return state.city === event.city ? state : { ...state, city: event.city, focus: null };
     case 'stop':
     case 'done':
       return state.running ? { ...state, running: false } : state;
@@ -109,6 +119,6 @@ export function load(storage?: Storage): FrontState {
     conversationId: v.conversationId as string | null, question: v.question as string,
     statusLines: v.statusLines as string[], answer: v.answer as string, notPossible: v.notPossible as NotPossible[],
     summaries: v.summaries as QuickSummary[], highlighted: v.highlighted as string | null,
-    running: false, staleCards: v.staleCards === true,
+    running: false, staleCards: v.staleCards === true, city: v.city === 'Houston' || v.city === 'Los Angeles' ? v.city : null, focus: null,
   };
 }

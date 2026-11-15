@@ -1,5 +1,6 @@
 import type { QuickSummary, RoomSummary } from '../../../server/src/shared/contract';
 import { fmt, kindWord, sentence } from './format';
+import { Check, Headphones, icon } from './icons';
 
 export { fmt } from './format';
 
@@ -58,14 +59,23 @@ function roomsTable(summary: Ok): HTMLDetailsElement {
 
 function okCard(summary: Ok, options: { highlighted: boolean; onEnter(modelId: string): void }): HTMLElement {
   const card = el('article', 'fd-card');
+  card.dataset.id = summary.modelId;
+  card.tabIndex = -1;
   if (options.highlighted) card.classList.add('highlighted');
 
   const header = el('div', 'fd-card-head');
   const title = [summary.address, kindWord(summary.kind)];
   if (summary.listing.sqft !== null) title.push(fmt.sqft(summary.listing.sqft));
-  header.append(el('h3', undefined, title.join(' · ')), el('span', 'fd-fit', `fit ${fmt.percent(summary.score)}`));
+  // The address leads; the rest of the title is quieter. The text reads the same as one line.
+  const heading = el('h3');
+  heading.append(el('span', 'fd-addr', title[0]), el('span', 'fd-meta', ` · ${title.slice(1).join(' · ')}`));
+  header.append(heading, el('span', 'fd-fit', `fit ${fmt.percent(summary.score)}`));
   card.append(header);
-  if (options.highlighted) card.append(el('p', 'fd-picked', 'Picked by the assistant'));
+  if (options.highlighted) {
+    const picked = el('p', 'fd-picked');
+    picked.append(icon(Check, 12), el('span', undefined, 'Picked by the assistant'));
+    card.append(picked);
+  }
 
   // The tour's name is often the street address again ('5506 Russett Dr'): show it only when it says something new.
   const name = summary.name ?? summary.listing.buildingName;
@@ -78,20 +88,23 @@ function okCard(summary: Ok, options: { highlighted: boolean; onEnter(modelId: s
   facts.push(fmt.price(summary.listing.price));
   card.append(el('p', 'fd-facts', facts.join(' · ')));
 
+  const stats = el('div', 'fd-stats');
   const best = summary.rooms.find(r => r.id === summary.bestRoomId) ?? summary.rooms[0];
   if (best) {
-    card.append(el('p', undefined, `Best room: ${best.name} · echo ${fmt.seconds(best.echo[1])} (${best.echoWord})`));
+    stats.append(el('p', undefined, `Best room: ${best.name} · echo ${fmt.seconds(best.echo[1])} (${best.echoWord})`));
     const flags = flagWords(best);
-    if (flags.length > 0) card.append(el('p', 'fd-flags', `Flags: ${flags.join(', ')}`));
-    card.append(el('p', undefined, `Outside noise inside: ${fmt.db(best.outsideDb)} · Escaping: ${fmt.db(best.escapeDb)}`));
+    if (flags.length > 0) stats.append(el('p', 'fd-flags', `Flags: ${flags.join(', ')}`));
+    stats.append(el('p', undefined, `Outside noise inside: ${fmt.db(best.outsideDb)} · Escaping: ${fmt.db(best.escapeDb)}`));
   }
-  card.append(el('p', undefined, `Area: ${fmt.area(summary.area)}`));
+  stats.append(el('p', undefined, `Area: ${fmt.area(summary.area)}`));
+  card.append(stats);
   card.append(el('p', 'fd-estimated', ['Estimated.', ...summary.assumptions.map(sentence).filter(Boolean)].join(' ')));
 
   const footer = el('div', 'fd-card-foot');
   footer.append(roomsTable(summary));
-  const button = el('button', 'fd-enter', 'Listen inside');
+  const button = el('button', 'fd-enter');
   button.type = 'button';
+  button.append(icon(Headphones, 14), el('span', undefined, 'Listen inside'));
   if (!summary.canEnter) {
     button.disabled = true;
     const why = summary.enterReason?.message ?? 'Not possible to load this tour.';
@@ -109,6 +122,7 @@ function okCard(summary: Ok, options: { highlighted: boolean; onEnter(modelId: s
 export function renderCard(summary: QuickSummary, options: { highlighted: boolean; onEnter(modelId: string): void }): HTMLElement {
   if (summary.ok) return okCard(summary, options);
   const card = el('article', 'fd-card failed');
+  card.dataset.id = summary.modelId;
   const header = el('div', 'fd-card-head');
   header.append(el('h3', undefined, summary.address ?? summary.modelId));
   card.append(header, el('p', 'fd-reason', summary.reason.message));

@@ -28,9 +28,10 @@
       #front[hidden] {
         display: none;
       }
+      /* The front door lays itself out (front/front.css): a side with the question, a map beside it. */
       #front {
-        padding: 24px;
-        line-height: 1.4;
+        flex: 1;
+        min-height: 0;
       }
       /* The not-possible screen (tour/failure.ts) replaces the tour's header and stage. */
       #tour .failure {

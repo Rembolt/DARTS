@@ -1,4 +1,4 @@
-// The agent's three tools (spec 7.2): their strict schemas, input checks and what each one emits to the page.
+// The agent's four tools (spec 7.2): their strict schemas, input checks and what each one emits to the page.
 import type Anthropic from '@anthropic-ai/sdk';
 import type { Quick } from '../quick/index.js';
 import type { Search } from '../search/index.js';
@@ -7,6 +7,7 @@ import {
   notPossible,
   type AgentEvent,
   type City,
+  cityAt,
   type NotPossible,
   type ProfileId,
   type PropertyKind,
@@ -102,6 +103,25 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
         reason: { type: 'string', description: 'One short sentence: why this property.' },
       },
       required: ['modelId', 'reason'],
+    },
+  },
+  {
+    name: 'focus_map',
+    description: 'Zoom the satellite map on the page. Use modelId (a row from search_properties) to centre on a real property, '
+      + 'or lat and lon for an area you searched. radiusKm is how much to show: 0.3 for one building, 2 for a neighbourhood, 15 for a district, 40 for the whole city. '
+      + 'Fails with { ok: false, code, message } outside Houston and Los Angeles.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        modelId: nullable('string', 'The modelId of a property from search_properties, or null.'),
+        lat: nullable('number', 'Latitude when modelId is null.'),
+        lon: nullable('number', 'Longitude when modelId is null.'),
+        radiusKm: { type: 'number', description: 'Radius to show in km, 0.3 to 40.' },
+        reason: { type: 'string', description: 'One short sentence the user sees: what the map is showing.' },
+      },
+      required: ['modelId', 'lat', 'lon', 'radiusKm', 'reason'],
     },
   },
 ];
@@ -234,10 +254,30 @@ async function openTour(input: unknown, deps: ToolDeps, push: Push): Promise<Res
   return { content: JSON.stringify({ ok: true, result: 'highlighted' }), isError: false };
 }
 
+async function focusMap(input: unknown, deps: ToolDeps, push: Push): Promise<Result> {
+  const v = object(input, ['modelId', 'lat', 'lon', 'radiusKm', 'reason']);
+  if (typeof v.reason !== 'string') bad('reason must be a string');
+  const radiusKm = clamp(finite(v.radiusKm, 'radiusKm'), 0.3, 40);
+  let lat: number;
+  let lon: number;
+  if (v.modelId !== null) {
+    const row = deps.search.lookup(modelId(v.modelId));
+    if (!row) return fail(notPossible('unknown_model'));
+    ({ lat, lon } = row);
+  } else {
+    lat = finite(v.lat, 'lat');
+    lon = finite(v.lon, 'lon');
+  }
+  if (!cityAt(lat, lon)) return fail(notPossible('outside_coverage'));
+  push({ type: 'mapFocus', lat, lon, radiusKm, reason: v.reason.slice(0, 200) });
+  return { content: JSON.stringify({ ok: true, result: 'map moved' }), isError: false };
+}
+
 const RUNNERS: Record<string, (input: unknown, deps: ToolDeps, push: Push) => Promise<Result>> = {
   search_properties: searchProperties,
   quick_audio_summary: quickAudioSummary,
   open_tour: openTour,
+  focus_map: focusMap,
 };
 
 /**

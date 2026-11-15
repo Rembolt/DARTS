@@ -1,7 +1,7 @@
 import { NOT_POSSIBLE, notPossible, type AgentEvent, type AgentRequest, type NotPossible, type NotPossibleCode } from '../../../server/src/shared/contract';
 import { UNREACHABLE } from '../api';
 
-const EVENT_TYPES = new Set<string>(['conversation', 'status', 'cards', 'text', 'open', 'placeSound', 'notPossible', 'done']);
+const EVENT_TYPES = new Set<string>(['conversation', 'status', 'cards', 'text', 'open', 'placeSound', 'mapFocus', 'notPossible', 'done']);
 
 function toEvent(frame: string): AgentEvent | null {
   const data = frame

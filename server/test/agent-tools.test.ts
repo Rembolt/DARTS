@@ -25,7 +25,7 @@ function objectSchemas(schema: unknown, out: Record<string, unknown>[] = []): Re
 
 describe('agent tools', () => {
   it('declares strict tools with every key required', () => {
-    expect(TOOLS.map(t => t.name).sort()).toEqual(['open_tour', 'quick_audio_summary', 'search_properties']);
+    expect(TOOLS.map(t => t.name).sort()).toEqual(['focus_map', 'open_tour', 'quick_audio_summary', 'search_properties']);
     for (const t of TOOLS) {
       expect(t.strict).toBe(true);
       expect(t.input_schema.additionalProperties).toBe(false);
@@ -103,6 +103,27 @@ describe('agent tools', () => {
     const out = await runTool('open_tour', { modelId: 'aaaaaaaaaaa', reason: 'best for recording' }, f);
     expect(out.isError).toBe(false);
     expect(out.events).toEqual([{ type: 'open', modelId: 'aaaaaaaaaaa', reason: 'best for recording' }]);
+  });
+
+  it('moves the map to a point in Houston, with the radius kept inside 0.3 to 40 km', async () => {
+    const out = await runTool('focus_map', { modelId: null, lat: 29.76, lon: -95.37, radiusKm: 900, reason: 'Downtown' }, fakes());
+    expect(out.isError).toBe(false);
+    expect(out.events).toEqual([{ type: 'mapFocus', lat: 29.76, lon: -95.37, radiusKm: 40, reason: 'Downtown' }]);
+  });
+
+  it('moves the map to a property by its CoStar row, not by coordinates the model made up', async () => {
+    const f = fakes();
+    const row = f.search.lookup('aaaaaaaaaaa')!;
+    const out = await runTool('focus_map', { modelId: 'aaaaaaaaaaa', lat: 0, lon: 0, radiusKm: 0.5, reason: 'The pick' }, f);
+    expect(out.events).toEqual([{ type: 'mapFocus', lat: row.lat, lon: row.lon, radiusKm: 0.5, reason: 'The pick' }]);
+  });
+
+  it('will not move the map outside Houston and Los Angeles, or to an unknown property', async () => {
+    const away = await runTool('focus_map', { modelId: null, lat: 40.7, lon: -74, radiusKm: 2, reason: 'x' }, fakes());
+    expect(JSON.parse(away.content)).toMatchObject({ ok: false, code: 'outside_coverage' });
+    const unknown = await runTool('focus_map', { modelId: 'zzzzzzzzzzz', lat: null, lon: null, radiusKm: 2, reason: 'x' }, fakes());
+    expect(JSON.parse(unknown.content)).toMatchObject({ ok: false, code: 'unknown_model' });
+    expect(away.events.length + unknown.events.length).toBe(0);
   });
 
   it('refuses to open a property without a mesh', async () => {

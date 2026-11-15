@@ -122,7 +122,7 @@ describe('agent loop', () => {
     expect(params.fallbacks).toBe('default');
     expect(params.betas).toEqual(['server-side-fallback-2026-07-01']);
     expect(params.tool_choice).toBeUndefined();
-    expect(params.tools?.map(t => (t as { name: string }).name)).toEqual(['search_properties', 'quick_audio_summary', 'open_tour']);
+    expect(params.tools?.map(t => (t as { name: string }).name)).toEqual(['search_properties', 'quick_audio_summary', 'open_tour', 'focus_map']);
     expect(params.system).toEqual([{ type: 'text', text: expect.any(String), cache_control: { type: 'ephemeral' } }]);
     expect(options).toMatchObject({ timeout: 30_000, maxRetries: 0 });
     expect(options?.signal).toBeInstanceOf(AbortSignal);
