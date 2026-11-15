@@ -3,7 +3,8 @@ import { proxyTarget } from './proxy-target';
 
 const target = proxyTarget(process.env);
 
-// The SDK key only works on localhost, so the dev server stays there.
+// The SDK key works on localhost, so the dev server stays there. In production the Express server serves the built
+// page itself (see docs/project/deployment-plan.md), on a domain added to the key's allow list.
 export default defineConfig({
   // Radix and Sonner are React libraries; Preact's compat layer runs them without shipping React.
   resolve: {

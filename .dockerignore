@@ -1,0 +1,24 @@
+# Secrets and licensed data never go into the image.
+.env
+.env.*
+costar-kit/data
+costar-kit/records
+
+# Rebuilt or downloaded inside the image.
+node_modules
+**/node_modules
+app/dist
+server/bundle
+server/cache
+server/.bundle-tmp-*
+
+# Not needed to run.
+.git
+.github
+.claude
+.superpowers
+docs
+scripts/output
+**/__pycache__
+*.mp3
+*.wav

@@ -1,5 +1,11 @@
 import { it, expect } from 'vitest';
-import { parsePort } from '../src/address.js';
+import { parseHost, parsePort } from '../src/address.js';
+
+it('listens on loopback unless HOST is set', () => {
+  expect(parseHost(undefined)).toBe('127.0.0.1');
+  expect(parseHost('  ')).toBe('127.0.0.1');
+  expect(parseHost('0.0.0.0')).toBe('0.0.0.0');
+});
 
 it('defaults to 8787', () => {
   expect(parsePort(undefined)).toBe(8787);

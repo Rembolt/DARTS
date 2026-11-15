@@ -1,0 +1,38 @@
+# Fly.io settings for DARTS. Deployed by .github/workflows/deploy.yml on every push to the prod branch.
+# Secrets are not here: set them once with `fly secrets set` (docs/project/deployment-plan.md, section 5).
+app = "dartssound"
+primary_region = "ewr"   # New Jersey, close to Princeton
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  CACHE_DIR = "/data/cache"
+  # Fly's proxy sits in front: trust one hop so each visitor gets their own rate limit.
+  TRUST_PROXY = "1"
+  # Per visitor, per paid route (Claude, Vexcel), per minute.
+  RATE_LIMIT_PER_MIN = "30"
+
+[[mounts]]
+  source = "darts_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"   # always on: no cold start during judging
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
