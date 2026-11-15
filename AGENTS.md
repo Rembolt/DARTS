@@ -85,6 +85,19 @@ These are not in the vendor docs and cost time to find out.
 - **Vexcel `elements/detect` takes about 2 s** for a 400 m square. Its `highway` label scores 0.52–0.57 on ordinary
   streets, so use 0.70. There is no highway near the demo house.
 - **Port 8080 may already be in use** by a teammate's test page. Pick another port for throwaway servers.
+- **Vexcel `elements/detect` answers one feature per detection.** A label with no hit has no feature. Each
+  `pixel-mask` PNG covers the detection's `pixel-bbox` clipped to the 2048 px image, and so does its map `bbox`, so
+  stretching the mask over the bbox places it. The demo house: 82 `house`, nearest `road` mask 30 m away, imagery 2026-02-07.
+- **Surroundings on ten addresses (Nov 15, `scripts/probe-surroundings.mjs`):** demo house, 15610 Stoney Fork Dr
+  and 2829 N Beachwood Dr (park edge) → `residential`. 852 N La Brea, 6003 Bellaire Blvd, 333 N Sam Houston Pky E
+  and 6400 Southwest Fwy → `commercial`. 6203 W 34th St → `industrial`, with 34 `warehouse`.
+  Two are wrong and no count rule fixes them: 509 N Hobart Blvd (dense LA apartments: 0 `house`, 32
+  `commercial building`) and 3014 N Coolidge Ave (industrial: 0 `warehouse`, 30 `commercial building`) → `commercial`.
+- **`warehouse` threshold is 10, not the spec's 3:** a retail strip on the Southwest Fwy found 4 and came out `industrial`.
+  The other thresholds are unchanged (`server/src/surroundings/area.ts` `AREA_THRESHOLDS`).
+- **`highway` doesn't find freeways:** Beltway 8 scored 0.50 and US-59 0.54, lower than ordinary streets (0.57 at the demo
+  house, 0.60 on Hobart). No threshold separates them, so it stays at 0.70 and no freeway site got a highway source.
+  `railway` found nothing at any of the ten, even at 0.4. Both rules stay in, unproven.
 
 More results, including timings, are in [docs/project/acoustic-experience.md](docs/project/acoustic-experience.md) section 2 and the design's section 9.
 
