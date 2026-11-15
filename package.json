@@ -10,6 +10,8 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,app \"npm run dev -w server\" \"npm run dev -w app\"",
+    "build": "npm run build -w app",
+    "start": "npm start -w server",
     "fetch-bundle": "node scripts/fetch-bundle.mjs",
     "test": "npm run test -w server && npm run test -w app",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w app",

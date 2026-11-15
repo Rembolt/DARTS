@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:   # run by hand from the Actions tab; choose the prod branch
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never cut a deploy off halfway
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/prod'   # a manual run on another branch tests but never deploys
+    runs-on: ubuntu-latest
+    # Secrets and SITE_URL live on this environment (Settings → Environments → production), limited to the prod branch.
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL || 'https://dartssound.fly.dev' }}
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://dartssound.fly.dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Builds the Docker image on Fly's builders, then replaces the running machine only if its health check passes.
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Smoke test
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          health=$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$SITE_URL/api/health")
+          echo "$health"
+          echo "$health" | jq -e '.bundle and .sdkKey and .matterport' > /dev/null
+          curl -fsS -o /dev/null -u "darts:${SITE_PASSWORD}" "$SITE_URL/"
+          curl -fsS -o /dev/null -u "darts:${SITE_PASSWORD}" "$SITE_URL/bundle/showcase.html"
+          echo "Live at $SITE_URL"

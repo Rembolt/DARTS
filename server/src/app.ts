@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import { sendNotPossible } from './errors.js';
+import { parseLimit, rateLimit, sitePassword } from './guard.js';
 import { isModelId } from './ids.js';
 import { MeshError, type MeshSource } from './mesh.js';
 import { DEMO_MODEL_ID, notPossible, type Health } from './shared/contract.js';
@@ -9,8 +10,11 @@ import { DEMO_MODEL_ID, notPossible, type Health } from './shared/contract.js';
 /** Sent with HTTP 503 for any /bundle request while the Bundle is not fetched. The app shows it as is. */
 export const BUNDLE_MISSING = 'Matterport Bundle missing. Run: npm run fetch-bundle';
 
-/** What the server's own root answers: this is the API, the page is on Vite. */
-export const API_ONLY = 'This is the API server. Open the app at http://localhost:5173';
+/** What the server's root answers when it has no built page to serve (local development: the page is on Vite). */
+export const API_ONLY = 'This is the API server. In development, open the app at http://localhost:5173';
+
+/** The routes that call paid services (Claude, Vexcel). Each gets its own per-IP limit when RATE_LIMIT_PER_MIN is set. */
+export const LIMITED_PATHS = ['/api/agent', '/api/jev', '/api/quick-summary', '/api/surroundings', '/api/map.jpg'];
 
 export interface AppOptions {
   /** Folder holding the unpacked Matterport Bundle (written by `npm run fetch-bundle`). */
@@ -25,6 +29,8 @@ export interface AppOptions {
   routers?: express.Router[];
   /** Extra health flags (the search index); bundle and the key flags are filled in here. */
   health?: () => Partial<Health>;
+  /** The built page (`app/dist`). When it holds index.html, the server serves the page too (production). */
+  pageDir?: string;
 }
 
 export function createApp(
@@ -32,7 +38,14 @@ export function createApp(
   options: AppOptions = {},
 ): express.Express {
   const app = express();
-  const { bundleDir, mesh, wideRouters = [], routers = [], health } = options;
+  const { bundleDir, mesh, wideRouters = [], routers = [], health, pageDir } = options;
+
+  // Behind a host's proxy (Fly), req.ip must come from X-Forwarded-For, or every visitor shares one rate limit.
+  if (env.TRUST_PROXY?.trim()) app.set('trust proxy', Number(env.TRUST_PROXY) || env.TRUST_PROXY.trim());
+  const password = env.SITE_PASSWORD?.trim();
+  if (password) app.use(sitePassword(password));
+  const perMinute = parseLimit(env.RATE_LIMIT_PER_MIN);
+  if (perMinute) for (const path of LIMITED_PATHS) app.use(path, rateLimit(perMinute));
   const allowedIds = options.allowedIds ?? new Set([DEMO_MODEL_ID]);
   const isAllowed = (id: unknown): id is string => isModelId(id) && (id === DEMO_MODEL_ID || allowedIds.has(id));
   const has = (key: string) => Boolean(env[key]?.trim());
@@ -113,6 +126,18 @@ export function createApp(
 
   if (wideRouters.length > 0) app.use('/api', express.json({ limit: '256kb' }), ...wideRouters);
   if (routers.length > 0) app.use('/api', express.json({ limit: '4kb' }), ...routers);
+
+  // Production: the built page, from the same origin as /api and /bundle (the SDK key is tied to that domain).
+  const pageIndex = pageDir ? join(pageDir, 'index.html') : undefined;
+  if (pageDir && pageIndex && existsSync(pageIndex)) {
+    // Vite names assets by content hash, so they never change; index.html must always be fetched fresh.
+    app.use('/assets', express.static(join(pageDir, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
+    app.use(express.static(pageDir, { index: false }));
+    app.get(/^(?!\/(api|bundle)(\/|$)).*/, (_req, res) => {
+      res.set('Cache-Control', 'no-cache').sendFile(pageIndex);
+    });
+    return app;
+  }
 
   // People open the address the server prints. Point them at the page instead of "Cannot GET /".
   app.get('/', (_req, res) => {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.js';
 import { DEMO_MODEL_ID } from '../src/shared/contract.js';
-import { loadEnv } from '../src/env.js';
+import { loadEnv, serverEnv } from '../src/env.js';
 
 describe('GET /api/config', () => {
   it('returns the SDK key and the model id, and nothing else', async () => {
@@ -69,6 +69,28 @@ describe('loadEnv', () => {
 
   it('returns an empty object when the file does not exist', () => {
     expect(loadEnv(join(tmpdir(), 'no-such-dir', '.env'))).toEqual({});
+  });
+});
+
+describe('serverEnv', () => {
+  it('puts non-empty environment variables over the file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'env-'));
+    try {
+      const file = join(dir, '.env');
+      writeFileSync(file, 'A=from-file\nB=from-file\nC=from-file\n');
+      expect(serverEnv(file, { A: 'from-env', B: '  ', D: 'only-env', E: undefined })).toEqual({
+        A: 'from-env',
+        B: 'from-file',
+        C: 'from-file',
+        D: 'only-env',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('works with no file at all, as on a deployment', () => {
+    expect(serverEnv(join(tmpdir(), 'no-such-dir', '.env'), { MATTERPORT_SDK_KEY: 'k' })).toEqual({ MATTERPORT_SDK_KEY: 'k' });
   });
 });
 
