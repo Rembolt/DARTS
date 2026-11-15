@@ -45,11 +45,12 @@ export function analyseRooms(
     const volume = room.area * room.height;
     const wallArea = perimeter(room) * room.height;
     const surface = 2 * room.area + wallArea;
+    // Furniture absorbs on the floor only, as in the tour (0fd3a83): the same room gets the same echo on its card and by ear.
     const absorption = BANDS.map(b => absorptionArea([
-      { area: room.area, alpha: MATERIALS[finish.floor].absorption[b] },
+      { area: room.area, alpha: MATERIALS[finish.floor].absorption[b] + finish.furnishing },
       { area: room.area, alpha: MATERIALS[finish.ceiling].absorption[b] },
       { area: wallArea, alpha: MATERIALS[finish.walls].absorption[b] },
-    ], finish.furnishing));
+    ], 0));
     const echo = absorption.map(a => round(sabine(volume, a), 2)) as [number, number, number];
 
     const flags: string[] = [];

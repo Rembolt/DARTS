@@ -185,7 +185,7 @@ describe('createQuick summarise', () => {
 
   it('flags an interior room and still estimates its outside noise', async () => {
     const rooms = [
-      room('hall', 'Hallway', { area: 4, width: 2, depth: 2, height: 2.5, edges: box(2, 2, 4, 4) }),
+      room('hall', 'Bathroom', { area: 4, width: 2, depth: 2, height: 2.5, edges: box(2, 2, 4, 4) }),
       room('n', 'Bedroom', { height: 2.5, edges: box(0, 4.1, 6, 6) }),
       room('s', 'Bedroom', { height: 2.5, edges: box(0, 0, 6, 1.9) }),
       room('w', 'Closet', { area: 4, height: 2.5, edges: box(0, 2, 1.9, 4) }),
