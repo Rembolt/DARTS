@@ -249,6 +249,8 @@ export function createActions(store: SceneStore, effects: SceneEffects, sounds: 
       const before = effects.current();
       const scene = store.get();
       if (!scene.sources.some(s => s.id === a.id)) return fail(`Unknown speaker: ${a.id}.`);
+      // Spec 6.5: the property's own sources (not placed as speakers) can be turned off but not removed.
+      if (!SPEAKER_ID.test(a.id)) return fail(`${a.id} is one of the property's own sources: turn it off instead of removing it.`);
       await sourcesChanged({ ...scene, sources: scene.sources.filter(s => s.id !== a.id) });
       return finish({ id: a.id }, before);
     },

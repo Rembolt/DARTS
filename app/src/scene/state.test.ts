@@ -148,6 +148,22 @@ describe('normaliseScene', () => {
     expect(s.permissions.putLayer).toEqual({ type002: true });
   });
 
+  it('refuses inherited keys and __proto__', () => {
+    const room = { roomId: 'r1', floor: { parts: [{ material: 'tile', weight: 1 }] }, wall: { parts: [{ material: 'drywall', weight: 1 }] }, ceiling: { parts: [{ material: 'drywall', weight: 1 }] }, reason: 'x' };
+    const text = JSON.stringify({
+      version: 1, modelId: ID, quality: 'toString',
+      defaults: { source: 'table', rooms: [{ ...room, furnishing: 'constructor' }, { ...room, roomId: 'r2', furnishing: 'sparse' }], exteriorWall: { parts: [{ material: 'siding_wall', weight: 1 }] }, exteriorReason: 'y' },
+      surfaces: { floor: 'toString' },
+    }).replace('"surfaces":', '"roomSurfaces":{"__proto__":{"floor":"tile"}},"meshLayers":{"__proto__":{"traced":false}},"surfaces":');
+    const s = norm(JSON.parse(text));
+    expect(s.quality).toBe('normal');
+    expect(s.defaults?.rooms.map(r => r.roomId)).toEqual(['r2']);
+    expect(s.surfaces.floor).toBe('wood_floor');
+    expect(Object.keys(s.roomSurfaces)).toEqual([]);
+    expect(Object.getPrototypeOf(s.roomSurfaces)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(s.meshLayers)).toBe(Object.prototype);
+  });
+
   it('drops malformed defaults', () => {
     expect(norm({ version: 1, modelId: ID, defaults: { source: 'llm', rooms: 'x' } }).defaults).toBeNull();
   });

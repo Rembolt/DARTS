@@ -202,6 +202,15 @@ describe('speakers', () => {
     expect(store.get().sources).toEqual([]);
   });
 
+  it('turns a tour source off but never removes it', async () => {
+    const tourSource: SceneSource = { ...speaker(0), id: 'highway', sound: 'highway', kind: 'ambient' };
+    const { calls, store, actions } = setup({ scene: { sources: [tourSource] } });
+    expect(await actions.removeSpeaker({ id: 'highway' })).toEqual({ ok: false, error: 'highway is one of the property\'s own sources: turn it off instead of removing it.' });
+    expect(calls).toEqual([]);
+    await actions.setSpeaker({ id: 'highway', enabled: false });
+    expect(store.get().sources).toEqual([{ ...tourSource, enabled: false }]);
+  });
+
   it('refuses an unknown speaker id', async () => {
     const { calls, actions } = setup();
     expect(await actions.moveSpeaker({ id: 'speaker-9', point: [0, 0, 0] })).toEqual({ ok: false, error: 'Unknown speaker: speaker-9.' });

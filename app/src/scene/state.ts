@@ -95,7 +95,9 @@ export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.ma
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const entries = (v: unknown): [string, unknown][] => (isObject(v) ? Object.entries(v) : []);
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+/** Own entries of a plain object, without a '__proto__' key (assigning one would replace the prototype). */
+const entries = (v: unknown): [string, unknown][] => (isObject(v) ? Object.entries(v).filter(([k]) => k !== '__proto__') : []);
 const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
 
 export function isVec3(v: unknown): v is Vec3 {
@@ -122,7 +124,7 @@ function readDefaults(v: unknown): MaterialDefaults | null {
     if (!isObject(r) || typeof r.roomId !== 'string' || typeof r.reason !== 'string') continue;
     const floor = readBlend(r.floor), wall = readBlend(r.wall), ceiling = readBlend(r.ceiling);
     const furnishing = r.furnishing;
-    if (!floor || !wall || !ceiling || typeof furnishing !== 'string' || !(furnishing in FURNISHING)) continue;
+    if (!floor || !wall || !ceiling || typeof furnishing !== 'string' || !own(FURNISHING, furnishing)) continue;
     rooms.push({ roomId: r.roomId, floor, wall, ceiling, furnishing: furnishing as FurnishingLevel, reason: r.reason });
   }
   return { source: v.source, rooms, exteriorWall, exteriorReason: v.exteriorReason };
@@ -200,7 +202,7 @@ export function normaliseScene(raw: unknown, modelId: string): { scene: SceneSta
   for (const [id, l] of entries(raw.meshLayers)) {
     if (isObject(l)) s.meshLayers[id] = { traced: bool(l.traced, true), shown: bool(l.shown, true) };
   }
-  if (typeof raw.quality === 'string' && raw.quality in QUALITY) s.quality = raw.quality as Quality;
+  if (typeof raw.quality === 'string' && own(QUALITY, raw.quality)) s.quality = raw.quality as Quality;
   s.permissions = readPermissions(raw.permissions);
   return { scene: s };
 }
