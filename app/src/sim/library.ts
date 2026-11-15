@@ -29,8 +29,18 @@ export function surfaceClass(materialTag: number, exterior: boolean): 0 | 1 | 2 
   return materialTag === 1 ? 1 : 2;
 }
 
+/**
+ * Furniture absorbs where it stands: its absorption goes on the floor only, times this scale (furniture area about
+ * the floor area times the furnishing). Spread over the walls and ceiling, it tripled every surface's absorption and
+ * squeezed every room of the demo house to the same 0.2-0.3 s echo. Measured on the demo mesh, mid band: scale 1
+ * gives 0.39 s (3.5 m2 bathroom) to 0.63 s (18.7 m2 bedroom); 2.5 gave 0.28-0.47 s. Rough value, not measured
+ * against a real room.
+ */
+export const FLOOR_FURNISHING_SCALE = 1;
+
 function libraryIndexOf(table: SurfaceTable, cls: 0 | 1 | 2 | 3, room: number): { index: number; furnishing: number } {
-  const furnishing = table.roomFurnishing.get(room) ?? table.furnishing;
+  const roomFurnishing = table.roomFurnishing.get(room) ?? table.furnishing;
+  const furnishing = cls === 1 ? roomFurnishing * FLOOR_FURNISHING_SCALE : 0;
   if (cls === 3) return { index: table.surfaces[3], furnishing };
   const own = table.roomSurfaces.get(room);
   return { index: own ? own[cls] : table.surfaces[cls], furnishing };
@@ -97,15 +107,13 @@ export function resolveSurfaces(state: SimState): void {
   }
   state.surfaces = surfaces;
 
-  // Door and window panels: glass or door, with the furnishing of the opening's room.
+  // Door and window panels: glass or door. Upright like walls, so no furniture absorption (it is on the floor).
   if (state.panels) {
-    const roomIndex = new Map(state.roomIds.map((id, i) => [id, i]));
     const { table, config } = state;
     state.panels.surfaces = state.panels.openings.map(o => {
       const index = o.kind === 'window' ? table.glassIndex : table.doorIndex;
       const material = index === undefined ? config.materials.wall : table.library[index];
-      const furnishing = table.roomFurnishing.get(roomIndex.get(o.roomId) ?? -1) ?? table.furnishing;
-      return resolveSurface(material, furnishing, config);
+      return resolveSurface(material, 0, config);
     });
   }
 }

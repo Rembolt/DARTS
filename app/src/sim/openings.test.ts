@@ -97,7 +97,7 @@ it('uses glass for windows and door for doors', () => {
     glassIndex: at('glass'), doorIndex: at('door'),
   });
   expect(panelSurface(state, 0).blockingDb).toEqual(MATERIALS.glass.blockingDb);
-  expect(panelSurface(state, 0).absorption).toEqual(MATERIALS.glass.absorption.map(a => Math.min(0.99, a + 0.15)));
+  expect(panelSurface(state, 0).absorption).toEqual(MATERIALS.glass.absorption);   // upright: no furniture absorption
   expect(panelSurface(state, 1).blockingDb).toEqual(MATERIALS.door.blockingDb);
   // A hit on a closed panel reads the panel's material.
   applySetOpenings(state, { type: 'setOpenings', closed: ['w'] });

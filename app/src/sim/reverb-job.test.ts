@@ -28,7 +28,8 @@ it('rings longer in a harder room', () => {
 
 it('uses the fallback for a band it cannot fit', () => {
   // Fully absorbing surfaces: nothing after the first bounce, so no decay to fit.
-  const dead = small({ furnishing: 1 });
+  const absorb = { absorption: [0.99, 0.99, 0.99] as [number, number, number], scattering: 0.1, blockingDb: [25, 35, 45] as [number, number, number] };
+  const dead = small({ materials: { wall: absorb, floor: absorb, ceiling: absorb } });
   const out = reverbJob(boxRoom(dead), msg, [0.5, 0.6, 0.7]);
   expect(out.echoTime).toEqual([0.5, 0.6, 0.7]);
 });
