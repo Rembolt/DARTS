@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConversations } from '../src/agent/conversations.js';
 import { createAgent } from '../src/agent/index.js';
 import type { AgentEvent, QuickSummary } from '../src/shared/contract.js';
-import { fakes, okSummary } from './agent-fakes.js';
+import { fakes, okSummary, row } from './agent-fakes.js';
 
 type Params = Anthropic.Beta.MessageCreateParamsNonStreaming;
 type Step = Anthropic.Beta.BetaMessage | Error | ((params: Params) => Anthropic.Beta.BetaMessage | Promise<Anthropic.Beta.BetaMessage>);
@@ -223,6 +223,35 @@ describe('agent loop', () => {
     expect(types(events)).not.toContain('text');
     expect(events.filter(e => e.type === 'done')).toHaveLength(1);
     expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('runs at most four tools at once and starts none after an abort', async () => {
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd', 'eeeeeeeeeee', 'fffffffffff'];
+    const controller = new AbortController();
+    let inFlight = 0;
+    let most = 0;
+    const slow = (abort: boolean) => async () => {
+      inFlight++; most = Math.max(most, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      if (abort) controller.abort();
+      inFlight--;
+      return okSummary('aaaaaaaaaaa', 0.5);
+    };
+    const f = fakes({ rows: ids.map(id => row(id)), summaries: Object.fromEntries(ids.map((id, i) => [id, slow(i === 0)])) });
+    const { client, calls } = scripted([message('tool_use', ids.map((id, i) => toolUse(`t${i}`, 'quick_audio_summary', summaryInput(id))))]);
+    const { events, emit } = collect();
+    await createAgent({ env: ENV, ...f, client }).run({ text: 'hi' }, emit, controller.signal);
+    expect(most).toBe(4);
+    expect(f.calls.summarise).toHaveLength(4);
+    expect(calls).toHaveLength(1);
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('reports an answer with no text as agent_failed', async () => {
+    const { client } = scripted([message('end_turn', [THINKING])]);
+    const { events, emit } = collect();
+    await createAgent({ env: ENV, ...fakes(), client }).run({ text: 'hi' }, emit, live());
+    expect(types(events)).toEqual(['conversation', 'notPossible', 'done']);
   });
 
   it('does not fall back to keywords when aborted during the first call', async () => {

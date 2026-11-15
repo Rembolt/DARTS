@@ -96,6 +96,8 @@ export function createAgent(options: {
   async function runTools(blocks: Anthropic.Beta.BetaToolUseBlock[], send: (e: AgentEvent) => void, signal: AbortSignal) {
     const deps = { search, quick, emit: send };
     return pool(blocks.map(block => async (): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+      // After an abort no further tool starts; the placeholder is never sent, because the turn is dropped.
+      if (signal.aborted) return { type: 'tool_result', tool_use_id: block.id, content: 'cancelled', is_error: true };
       const started = Date.now();
       const outcome = await runTool(block.name, block.input, deps);
       // One line per tool: name, time, outcome. Never the user's text or the tool input.
@@ -137,7 +139,8 @@ export function createAgent(options: {
         }
         case 'end_turn': {
           const answer = response.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map(b => b.text).join('').trim();
-          if (answer) send({ type: 'text', text: answer });
+          if (!answer) return fail(notPossible('agent_failed'));
+          send({ type: 'text', text: answer });
           return turn;
         }
         case 'refusal':

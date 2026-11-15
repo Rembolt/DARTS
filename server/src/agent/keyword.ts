@@ -25,7 +25,7 @@ const COMMERCIAL = /\b(office|shop|store|cafe|café|restaurant|retail)/i;
 const HOME_OFFICE = /\b(home office|work from home)\b/i;
 const LOS_ANGELES = /\blos angeles\b|\bla\b/i;
 const HOUSTON = /\bhouston\b/i;
-const OUR_CITY = /^(houston|los angeles|la)\b/i;
+const OUR_CITY = /\b(houston|los angeles|la)\b/i;
 const IN_PLACE = /\bin\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*)*)/g;
 
 export function readRequest(text: string): { profile: ProfileId; city: City | null; otherCity: boolean; zip: string | null; kind: PropertyKind | 'any' } {
