@@ -10,17 +10,18 @@ import { firstRoomId, isInside, TraceScheduler } from './listen';
 import { formatSimReady, startSim, type SimClient } from './sim/client';
 import { ReverbScheduler } from './sim/reverb-cache';
 import type { FromWorker, Vec3 } from './sim/types';
+import { mountUi } from './ui/mount';
+import { commands, ui, addSpeaker, setOpeningOpen, setOpenings, setSpeakers, type Speaker } from './ui/store';
+import { interpret } from './ui/assistant';
+import { mockOpenings } from './ui/mock';
+import { listenForPlacement } from './ui/placement';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
-const status = document.getElementById('status')!;
-const poseLine = document.getElementById('pose')!;
-const simLine = document.getElementById('sim')!;
 const iframe = document.getElementById('viewer') as HTMLIFrameElement;
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('blueprint') as HTMLCanvasElement;
-const button = document.getElementById('blueprint-toggle') as HTMLButtonElement;
-const modeButton = document.getElementById('blueprint-mode') as HTMLButtonElement;
-const audioButton = document.getElementById('audio-toggle') as HTMLButtonElement;
+
+mountUi(document.getElementById('ui-root')!);
 
 const blueprint = createBlueprint(canvas);
 let latestPose: Pose | null = null;
@@ -31,15 +32,9 @@ blueprint.setMode(modeSwitch.mode());
 
 function showToggle(): void {
   const v = toggle.view();
-  button.disabled = !v.enabled;
-  button.textContent = v.label;
-  button.title = v.title;
-  button.setAttribute('aria-pressed', String(v.pressed));
+  ui.blueprint.value = { enabled: v.enabled, on: v.pressed, label: v.label, mode: modeSwitch.mode() === 'solid' ? 'Solid' : 'X-ray' };
   canvas.hidden = !v.pressed;
   blueprint.setVisible(v.pressed);
-  modeButton.disabled = !v.enabled;
-  modeButton.textContent = modeSwitch.label();
-  modeButton.title = modeSwitch.title();
 }
 
 function flipBlueprint(): void {
@@ -47,14 +42,17 @@ function flipBlueprint(): void {
   showToggle();
 }
 
-button.addEventListener('click', flipBlueprint);
-modeButton.addEventListener('click', () => {
+commands.toggleBlueprint = flipBlueprint;
+commands.cycleBlueprintMode = () => {
   blueprint.setMode(modeSwitch.next());
   showToggle();
-});
+};
 const listenForShortcut = bindShortcut(toggle, flipBlueprint);
 listenForShortcut(document);
-new ResizeObserver(([entry]) => blueprint.resize(entry.contentRect, devicePixelRatio)).observe(stage);
+new ResizeObserver(([entry]) => {
+  blueprint.resize(entry.contentRect, devicePixelRatio);
+  ui.stage.value = { w: entry.contentRect.width, h: entry.contentRect.height };
+}).observe(stage);
 showToggle();
 
 // ---- Listener, traces, audio and reverb (mvp-design.md 2 flow, 5.5, 5.6, 6) ----
@@ -108,6 +106,12 @@ function placeSources(start: Vec3): void {
   audio?.setSourcePosition('indoor', pos.indoor);
   audio?.setSourcePosition('outdoor', pos.outdoor);
   console.info('sources', pos);
+  // The overlay lists the two MVP sources as speakers; more are preview-only until the engine takes a source list (v2 5.1).
+  const mvp: Speaker[] = [
+    { id: 'indoor', label: 'Indoor music', sound: 'music', kind: 'point', position: pos.indoor, levelDb: 0, enabled: true },
+    { id: 'outdoor', label: 'Highway', sound: 'highway', kind: 'ambient', position: pos.outdoor, levelDb: -12, enabled: true },
+  ];
+  setSpeakers([...mvp, ...ui.speakers.value.filter(s => s.id !== 'indoor' && s.id !== 'outdoor')]);
   traces.invalidate();
 }
 
@@ -151,13 +155,11 @@ function onWorkerMessage(msg: FromWorker): void {
 }
 
 function showAudio(state: 'off' | 'starting' | 'on'): void {
-  audioButton.disabled = state === 'starting';
-  audioButton.textContent = state === 'on' ? 'Stop audio' : state === 'starting' ? 'Starting…' : 'Start audio';
-  audioButton.setAttribute('aria-pressed', String(state === 'on'));
+  ui.audio.value = state;
 }
 
 // The click handler itself creates the AudioContext, so the browser lets it play.
-audioButton.addEventListener('click', () => {
+commands.toggleAudio = () => {
   if (audio) {
     const old = audio;
     audio = null;
@@ -188,7 +190,7 @@ audioButton.addEventListener('click', () => {
       showAudio('off');
       showError(err);
     });
-});
+};
 
 // Dev console controls to find which part breaks up: __audio.mute('reverb' | 'echoes' | 'direct'), __audio.unmute(...),
 // __audio.log(true) to timestamp every trace and reverb swap. The sources keep playing either way.
@@ -211,13 +213,12 @@ if (import.meta.env.DEV) {
 
 function showError(err: unknown): void {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown error';
-  status.textContent = message;
-  status.title = message;
+  ui.status.value = message;
 }
 
 /** Download the mesh and load it in the worker. Runs beside the tour; it never blocks or breaks it. */
 async function startSimulation(modelId: string): Promise<void> {
-  simLine.textContent = 'Loading mesh…';
+  ui.sim.value = 'Loading mesh…';
   try {
     const obj = await loadMesh(modelId);
     const client = startSim();
@@ -226,7 +227,7 @@ async function startSimulation(modelId: string): Promise<void> {
     sim = client;
     traceListener();
     enterRoom();
-    simLine.textContent = formatSimReady(ready);
+    ui.sim.value = formatSimReady(ready);
     blueprint.setLines(ready.lines);
     blueprint.setMesh(ready.mesh);
     blueprintLines = ready.lines;
@@ -242,8 +243,7 @@ async function startSimulation(modelId: string): Promise<void> {
     });
   } catch (err) {
     const message = `Simulation failed to load: ${err instanceof Error ? err.message : String(err)}`;
-    simLine.textContent = message;
-    simLine.title = message;
+    ui.sim.value = message;
     toggle.failed(err instanceof Error ? err.message : String(err));
     showToggle();
   }
@@ -262,26 +262,30 @@ async function start(): Promise<void> {
     return;
   }
 
-  status.textContent = 'Loading tour…';
+  ui.status.value = 'Loading tour…';
   // Never write the SDK key to the page text or the console. It appears only in this src.
   iframe.src = viewerUrl(config);
 
   const sdk = await connectViewer(iframe, message => {
-    status.textContent = message;
+    ui.status.value = message;
   }).catch(showError);
   if (!sdk) return;
 
-  status.textContent = `Tour playing: model ${config.modelId}`;
+  ui.status.value = `Tour playing: model ${config.modelId}`;
   // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
   if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
   sdk.Camera.pose.subscribe(pose => {
-    poseLine.textContent = formatPose(pose);
+    ui.pose.value = pose;
+    if (import.meta.env.DEV) (window as unknown as { __pose: string }).__pose = formatPose(pose);
     blueprint.setPose(pose);
     latestPose = pose;
     // In dollhouse and floor plan the camera is outside: the listener stays at its last inside position (5.6).
     if (!isInside(pose.mode)) return;
     listener = [pose.position.x, pose.position.y, pose.position.z];
-    if (!sources) placeSources(listener);
+    if (!sources) {
+      placeSources(listener);
+      setOpenings(mockOpenings(listener));
+    }
     audio?.setListenerPose(pose);
     traceListener();
   });
@@ -305,6 +309,43 @@ async function start(): Promise<void> {
   };
   document.addEventListener('keydown', logPoint);
   iframe.contentWindow?.addEventListener('keydown', logPoint);
+
+  // Click to add a speaker (v2-design.md 5.4): the S key toggles placement, a click in the tour drops it at the pointer.
+  const placeKey = (event: KeyboardEvent) => {
+    const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+    if (event.key.toLowerCase() === 's' && !event.repeat && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      ui.placing.value = !ui.placing.value;
+    } else if (event.key === 'Escape') ui.placing.value = false;
+  };
+  document.addEventListener('keydown', placeKey);
+  iframe.contentWindow?.addEventListener('keydown', placeKey);
+  if (iframe.contentWindow) {
+    listenForPlacement(
+      iframe.contentWindow,
+      () => ui.placing.value && pointed !== null,
+      () => {
+        if (!pointed) return;
+        addSpeaker([pointed[0], pointed[1] + 0.3, pointed[2]]);
+        ui.placing.value = false;
+      },
+    );
+  }
+  const frameBody = () => iframe.contentDocument?.body;
+  ui.placing.subscribe(on => {
+    const body = frameBody();
+    if (body) body.style.cursor = on ? 'crosshair' : '';
+  });
+
+  // The agent seam: replace this local stand-in with the Jev relay.
+  commands.ask = async text => {
+    await new Promise(r => setTimeout(r, 450));
+    const intent = interpret(text, ui.openings.value);
+    if (intent.kind === 'openings') setOpeningOpen(intent.ids, intent.open);
+    else if (intent.kind === 'place') ui.placing.value = true;
+    else if (intent.kind === 'blueprint') commands.toggleBlueprint();
+    else if (intent.kind === 'audio') commands.toggleAudio();
+    return intent.reply;
+  };
 
   if (import.meta.env.DEV) {
     const { installBlueprintCheck } = await import('./debug');
