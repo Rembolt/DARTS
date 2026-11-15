@@ -41,7 +41,50 @@ export type SourceInput = { position: Vec3 };
 /**
  * Trace `raysPerTrace` rays from the listener, spread evenly over the sphere (Fibonacci sphere), up to `bounces`
  * hits each. The random choices (diffuse or mirror bounce, diffuse direction) come from `rng`, so a fixed seed gives
- * a fixed result.
+ * a fixed result. The choices the design leaves open are listed on `traceRays`.
+ */
+export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput[], rng: Rng): EarlyResult {
+  const { config } = state;
+  const rays = config.raysPerTrace;
+  const bounces = config.bounces;
+  const hitPoints = new Float32Array(rays * bounces * 3);
+  const hitCount = new Uint8Array(rays);
+  const contributions: Contribution[] = [];
+  const stats = traceRays(state, listener, sources, rng, {
+    rays,
+    bounces,
+    maxLegWalls: config.maxLegWalls,
+    minStrength: 0,
+    onHit(r, b, x, y, z) {
+      const at = (r * bounces + b) * 3;
+      hitPoints[at] = x; hitPoints[at + 1] = y; hitPoints[at + 2] = z;
+      hitCount[r] = b + 1;
+    },
+    onContribution(source, e0, e1, e2, arrival, r, b, first) {
+      contributions.push({ source, energy: [e0, e1, e2], arrival, direction: first, ray: r, bounce: b });
+    },
+  });
+  return { rays, bounces, contributions, hitPoints, hitCount, ...stats };
+}
+
+export type RayTraceOptions = {
+  rays: number;
+  bounces: number;
+  /** Walls a connecting leg may cut through (0: the leg must be clear). */
+  maxLegWalls: number;
+  /** A ray stops once its strength is at or below this in every band (0: only when it is fully absorbed). */
+  minStrength: number;
+  /** Every hit point, in order along each ray. */
+  onHit?: (ray: number, bounce: number, x: number, y: number, z: number) => void;
+  /** Every contribution: energy per band against the source's unobstructed direct sound (1/D²), arrival in seconds. */
+  onContribution: (
+    source: number, e0: number, e1: number, e2: number, arrival: number, ray: number, bounce: number, first: Vec3,
+  ) => void;
+};
+
+/**
+ * The shared tracer behind the early reflections (5.3) and the reverb job (5.5): rays from the listener, evenly over
+ * the sphere, each hit connected to every source.
  *
  * Choices the design leaves open:
  * - The surface's facing at a hit is its normal turned towards the side the ray came from (rays hit both sides).
@@ -50,14 +93,16 @@ export type SourceInput = { position: Vec3 };
  *   would be negative.
  * - Strength per band is clamped at 0 when `absorption + furnishing` exceeds 1.
  */
-export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput[], rng: Rng): EarlyResult {
+export function traceRays(
+  state: SimState,
+  listener: Vec3,
+  sources: SourceInput[],
+  rng: Rng,
+  opts: RayTraceOptions,
+): Pick<EarlyResult, 'meanFreePath' | 'averageAbsorption'> {
   const { config, normals, materials, index } = state;
-  const rays = config.raysPerTrace;
-  const bounces = config.bounces;
+  const { rays, bounces, maxLegWalls, minStrength, onHit, onContribution } = opts;
   const c = config.speedOfSound;
-  const hitPoints = new Float32Array(rays * bounces * 3);
-  const hitCount = new Uint8Array(rays);
-  const contributions: Contribution[] = [];
   const reference = sources.map(s => {
     const p = s.position;
     const d = Math.max(MIN_REFERENCE_DISTANCE, Math.hypot(p[0] - listener[0], p[1] - listener[1], p[2] - listener[2]));
@@ -91,9 +136,7 @@ export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput
       const px = origin[0] + dir[0] * hit.distance;
       const py = origin[1] + dir[1] * hit.distance;
       const pz = origin[2] + dir[2] * hit.distance;
-      const at = (r * bounces + b) * 3;
-      hitPoints[at] = px; hitPoints[at + 1] = py; hitPoints[at + 2] = pz;
-      hitCount[r] = b + 1;
+      onHit?.(r, b, px, py, pz);
 
       const t = hit.triangle;
       if (isDegenerate(normals, t)) {
@@ -108,7 +151,7 @@ export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput
         absorptionSum[k] += a[k];
         strength[k] *= Math.max(0, 1 - a[k]);
       }
-      if (strength[0] === 0 && strength[1] === 0 && strength[2] === 0) break;
+      if (strength[0] <= minStrength && strength[1] <= minStrength && strength[2] <= minStrength) break;
 
       legStart[0] = px + n[0] * SURFACE_OFFSET;
       legStart[1] = py + n[1] * SURFACE_OFFSET;
@@ -122,21 +165,19 @@ export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput
         if (leg === 0) continue;
         const cos = (lx * n[0] + ly * n[1] + lz * n[2]) / leg;
         if (cos <= 0) continue;
-        const cross = crossSegment(state, legStart, sp, config.maxLegWalls);
+        const cross = crossSegment(state, legStart, sp, maxLegWalls);
         if (!cross) continue;
         const scale = (perRay * cos * reference[s]) / (leg * leg);
-        contributions.push({
-          source: s,
-          energy: [
-            scale * strength[0] * cross.transmission[0],
-            scale * strength[1] * cross.transmission[1],
-            scale * strength[2] * cross.transmission[2],
-          ],
-          arrival: (travelled + leg) / c,
-          direction: first,
-          ray: r,
-          bounce: b,
-        });
+        onContribution(
+          s,
+          scale * strength[0] * cross.transmission[0],
+          scale * strength[1] * cross.transmission[1],
+          scale * strength[2] * cross.transmission[2],
+          (travelled + leg) / c,
+          r,
+          b,
+          first,
+        );
       }
 
       // Bounce: diffuse (cosine-weighted around the facing) or mirror.
@@ -154,15 +195,7 @@ export function traceEarly(state: SimState, listener: Vec3, sources: SourceInput
   if (segments > 0) {
     for (let k = 0; k < 3; k++) averageAbsorption[k] = Math.min(0.999, Math.max(0, absorptionSum[k] / segments));
   }
-  return {
-    rays,
-    bounces,
-    contributions,
-    hitPoints,
-    hitCount,
-    meanFreePath: segments > 0 ? segmentSum / segments : 0,
-    averageAbsorption,
-  };
+  return { meanFreePath: segments > 0 ? segmentSum / segments : 0, averageAbsorption };
 }
 
 /** A random unit vector in the hemisphere around unit `n`, denser towards `n` (cosine-weighted). Writes into `out`. */
