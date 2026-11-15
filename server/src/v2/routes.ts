@@ -4,6 +4,7 @@ import { isModelId } from '../ids.js';
 import type { PiSource } from '../quick/pi.js';
 import type { Search } from '../search/index.js';
 import { notPossible } from '../shared/contract.js';
+import { suggestDefaults } from './defaults.js';
 import { geometryOf } from './geometry.js';
 
 export type V2RouterDeps = {
@@ -26,6 +27,16 @@ export function v2Router(deps: V2RouterDeps): express.Router {
     try {
       const model = await pi.get(req.params.id);
       res.json(geometryOf(model));
+    } catch (err) {
+      sendNotPossible(res, toNotPossible(err));
+    }
+  });
+
+  router.get('/defaults/:id', async (req, res) => {
+    if (!isAllowed(req.params.id)) return sendNotPossible(res, notPossible('unknown_model'));
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    try {
+      res.json(await suggestDefaults(deps, req.params.id, refresh));
     } catch (err) {
       sendNotPossible(res, toNotPossible(err));
     }
