@@ -68,6 +68,15 @@ let reverb: Reverb | null = null;
 let traceId = 0;
 const traces = new TraceScheduler();
 const rooms = new ReverbScheduler();
+let estimateRoom: string | null | undefined; // room whose reverb estimate is applied; undefined: none yet
+let debugLog = false; // dev: log every reverb swap and trace with a timestamp (window.__audio.log(true))
+
+/** Change the reverb. Swapping a convolver's sound can drop the reverb for an instant, so swaps are kept rare. */
+function setEchoTime(echoTime: [number, number, number], why: string): void {
+  if (!reverb) return;
+  const swapped = reverb.setEchoTime(echoTime);
+  if (swapped && debugLog) console.info(`[${(performance.now() / 1000).toFixed(2)} s] reverb swap (${why})`, echoTime.map(t => t.toFixed(2)));
+}
 
 function sendTrace(position: Vec3 | null): void {
   if (!position || !sim || !sources) return;
@@ -86,7 +95,7 @@ function traceListener(): void {
 function enterRoom(): void {
   if (!sim || !listener) return;
   const d = rooms.enterRoom(roomId, listener);
-  if (d.echoTime) reverb?.setEchoTime(d.echoTime);
+  if (d.echoTime) setEchoTime(d.echoTime, 'cached room');
   sendReverb(d.request);
 }
 
@@ -114,15 +123,20 @@ function onWorkerMessage(msg: FromWorker): void {
           pathSource: msg.pathSource,
         });
       }
-      // Until the room's reverb job answers, the trace's estimate stands in (5.5); the 15% rule stops churn.
-      if (!rooms.currentRoom || !rooms.cache.get(rooms.currentRoom)) reverb?.setEchoTime(msg.echoTimeEstimate);
+      // Until the room's reverb job answers, the trace's estimate stands in (5.5): once per room, not every trace.
+      const room = rooms.currentRoom;
+      if (reverb && estimateRoom !== room && !(room && rooms.cache.get(room))) {
+        estimateRoom = room;
+        setEchoTime(msg.echoTimeEstimate, 'estimate');
+      }
+      if (debugLog) console.info(`[${(performance.now() / 1000).toFixed(2)} s] trace ${Math.round(msg.ms)} ms`);
       sendTrace(traces.onResult());
       break;
     }
     case 'reverb': {
       console.info('reverb', msg.roomId, msg.echoTime.map(t => t.toFixed(2)), `${Math.round(msg.ms)} ms`);
       const d = rooms.onResult(msg.roomId, msg.echoTime);
-      if (d.echoTime) reverb?.setEchoTime(d.echoTime);
+      if (d.echoTime) setEchoTime(d.echoTime, 'reverb job');
       sendReverb(d.request);
       break;
     }
@@ -160,8 +174,9 @@ audioButton.addEventListener('click', () => {
       reverb = new Reverb(engine.context);
       engine.connectReverb(reverb.input);
       reverb.output.connect(engine.master);
+      estimateRoom = undefined;
       const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
-      if (known) reverb.setEchoTime(known);
+      if (known) setEchoTime(known, 'cached room');
       if (sources) for (const s of sources) engine.setSourcePosition(s.id as 'indoor' | 'outdoor', s.position);
       if (latestPose && isInside(latestPose.mode)) engine.setListenerPose(latestPose);
       traces.invalidate(); // a fresh trace sets every level at once
@@ -174,6 +189,25 @@ audioButton.addEventListener('click', () => {
       showError(err);
     });
 });
+
+// Dev console controls to find which part breaks up: __audio.mute('reverb' | 'echoes' | 'direct'), __audio.unmute(...),
+// __audio.log(true) to timestamp every trace and reverb swap. The sources keep playing either way.
+if (import.meta.env.DEV) {
+  let reverbOn = true;
+  const set = (part: 'reverb' | 'echoes' | 'direct', on: boolean) => {
+    if (!audio) return 'start audio first';
+    if (part === 'reverb') {
+      if (reverb && on !== reverbOn) on ? reverb.output.connect(audio.master) : reverb.output.disconnect();
+      reverbOn = on;
+    } else audio.setPartEnabled(part, on);
+    return `${part} ${on ? 'on' : 'muted'}`;
+  };
+  (window as unknown as { __audio: unknown }).__audio = {
+    mute: (part: 'reverb' | 'echoes' | 'direct') => set(part, false),
+    unmute: (part: 'reverb' | 'echoes' | 'direct') => set(part, true),
+    log: (on = true) => ((debugLog = on), `logging ${on ? 'on' : 'off'}`),
+  };
+}
 
 function showError(err: unknown): void {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown error';

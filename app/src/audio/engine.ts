@@ -26,6 +26,8 @@ export type AudioEngine = {
   applySimResult(sources: SourceResult[]): void;
   /** Attach every source's reverb send to the reverb's input (step 9). Until then the sends go nowhere. */
   connectReverb(input: AudioNode): void;
+  /** Dev aid: silence the direct sound or the echoes (the sources keep playing), to find which part breaks up. */
+  setPartEnabled(part: 'direct' | 'echoes', on: boolean): void;
   /** Stop the sounds and close the context. */
   stop(): Promise<void>;
 };
@@ -164,7 +166,9 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   function directGain(v: Voice): number {
     return v.id === 'indoor' ? indoorDirectGain(distance(listener, v.position), v.directMid) : outdoorDirectGain(v.directMid);
   }
-  const updateGain = (v: Voice) => smooth(v.gain.gain, directGain(v));
+  const enabled = { direct: true, echoes: true };
+  let lastResults: SourceResult[] = [];
+  const updateGain = (v: Voice) => smooth(v.gain.gain, enabled.direct ? directGain(v) : 0);
 
   function setShelves(s: Shelves, bands: Bands, at = now()) {
     const { low, high } = shelfGainsDb(bands);
@@ -175,7 +179,7 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
   function applySlot(slot: Slot, energy: Bands, delay: number, clearGain: number) {
     const t = now();
     const plan = planDelayChange({
-      now: t, currentDelay: slot.delayValue, nextDelay: delay, currentGain: slot.gainValue, nextGain: echoGain(energy[1], clearGain),
+      now: t, currentDelay: slot.delayValue, nextDelay: delay, currentGain: slot.gainValue, nextGain: enabled.echoes ? echoGain(energy[1], clearGain) : 0,
     });
     const g = slot.gain.gain, d = slot.delay.delayTime;
     if (plan.kind === 'dip') {
@@ -229,8 +233,30 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
       updateGain(v);
     },
 
-    applySimResult(results) {
+    setPartEnabled(part, on) {
+      enabled[part] = on;
+      for (const v of Object.values(voices)) updateGain(v);
+      if (lastResults.length) applyResults(lastResults);
+    },
+
+    applySimResult: applyResults,
+
+    connectReverb(input) {
+      for (const v of Object.values(voices)) v.send.connect(input);
+    },
+
+    async stop() {
       if (stopped) return;
+      stopped = true;
+      for (const v of Object.values(voices)) v.source.stop();
+      await ctx.close();
+    },
+  };
+
+  function applyResults(results: SourceResult[]): void {
+    {
+      if (stopped) return;
+      lastResults = results;
       for (const r of results) {
         const v = voices[r.id as SourceId];
         if (!v) continue;
@@ -246,17 +272,6 @@ export async function createAudioEngine(options: EngineOptions = {}): Promise<Au
         // Reverb send (mvp-design.md 6): sqrt(lateEnergy mid) × reverbGain. Silent until connectReverb.
         smooth(v.send.gain, Math.sqrt(Math.max(r.lateEnergy[1], 0)) * AUDIO.reverbGain);
       }
-    },
-
-    connectReverb(input) {
-      for (const v of Object.values(voices)) v.send.connect(input);
-    },
-
-    async stop() {
-      if (stopped) return;
-      stopped = true;
-      for (const v of Object.values(voices)) v.source.stop();
-      await ctx.close();
-    },
-  };
+    }
+  }
 }
