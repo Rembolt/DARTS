@@ -46,21 +46,60 @@
       #sim {
         color: #bdb;
       }
-      #viewer {
+      #blueprint-toggle {
+        flex: none;
+        height: 20px;
+        padding: 0 10px;
+        border: 1px solid #555;
+        border-radius: 3px;
+        background: #222;
+        color: #eee;
+        font: inherit;
+        cursor: pointer;
+      }
+      #blueprint-toggle[aria-pressed='true'] {
+        background: #1f3a93;
+        border-color: #1f3a93;
+      }
+      #blueprint-toggle:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #stage {
+        position: relative;
         flex: 1;
         min-height: 0;
+      }
+      #viewer {
+        display: block;
         width: 100%;
+        height: 100%;
         border: 0;
+      }
+      /* Exactly over the tour, and never in the way of the mouse (mvp-design.md 7). */
+      #blueprint {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      #blueprint[hidden] {
+        display: none;
       }
     </style>
   </head>
   <body>
     <header>
+      <button id="blueprint-toggle" type="button" aria-pressed="false" disabled>Blueprint</button>
       <p id="status">Loading…</p>
       <p id="pose"></p>
       <p id="sim"></p>
     </header>
-    <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
+    <div id="stage">
+      <iframe id="viewer" allow="fullscreen; xr-spatial-tracking"></iframe>
+      <canvas id="blueprint" hidden></canvas>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
