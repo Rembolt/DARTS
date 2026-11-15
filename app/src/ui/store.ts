@@ -111,6 +111,7 @@ export const ui = {
   speaking: signal(false),
   /** Voice input. The mic button flips it; speech recognition plugs into `commands.voice` later. */
   listening: signal(false),
+  footsteps: signal(true),
 };
 
 export function agentState(): AgentState {
@@ -125,6 +126,7 @@ export const commands = {
   toggleBlueprint: () => {},
   cycleBlueprintMode: () => {},
   toggleAudio: () => {},
+  toggleFootsteps: () => {},
   /** Called after any change so the app can retrace or update audio. */
   onSpeakersChanged: (_speakers: Speaker[]) => {},
   onOpeningsChanged: (_openings: Opening[]) => {},

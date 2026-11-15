@@ -5,7 +5,7 @@ import { useRef } from 'preact/hooks';
 import { MaterialSelect } from './MaterialSelect';
 import { DEFAULT_SETTINGS, parseSettings, QUALITY, SURFACES, type Quality } from './materials';
 import { Panel } from './Panel';
-import { patchSettings, setSettings, ui } from './store';
+import { patchSettings, setSettings, commands, ui } from './store';
 import { toast } from 'sonner';
 
 function save() {
@@ -65,6 +65,18 @@ export function Settings() {
           />
           <small>Soft furniture, curtains, people. More of it shortens the echo.</small>
         </label>
+        <div class="set-row">
+          <span>Footsteps on move</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={ui.footsteps.value}
+            class={`btn ${ui.footsteps.value ? 'primary' : 'quiet'}`}
+            onClick={() => commands.toggleFootsteps()}
+          >
+            {ui.footsteps.value ? 'On' : 'Off'}
+          </button>
+        </div>
       </section>
 
       <section class="set-group">

@@ -138,6 +138,7 @@ export function startTour(modelId: string): void {
   let debugLog = false; // dev: log every reverb swap and trace with a timestamp (window.__audio.log(true))
   let currentEchoTime: Bands | null = null;
   let pointedHit: { position: Vec3; normal: Vec3 } | null = null;
+  let sdkRef: MpSdk | null = null;
 
   const uiBridge = mountTourUi({
     modelId,
@@ -163,6 +164,22 @@ export function startTour(modelId: string): void {
       showToggle();
     },
     toggleAudio: () => audioButton.click(),
+    toggleFootsteps: () => flipSteps(),
+    moveToPoint: async point => {
+      const s = sdkRef as (MpSdk & { Model?: { getData(): Promise<{ sweeps?: { sid?: string; id?: string; position?: { x: number; y: number; z: number } }[] }> } }) | null;
+      if (!s?.Model?.getData) return;
+      const data = await s.Model.getData();
+      const sweeps = data.sweeps ?? [];
+      let best: { id: string; dist: number } | null = null;
+      for (const sw of sweeps) {
+        const id = sw.sid ?? sw.id;
+        if (!id || !sw.position) continue;
+        const dy = Math.abs(sw.position.y - point[1]);
+        const d = Math.hypot(sw.position.x - point[0], sw.position.z - point[2]) + (dy > 1.5 ? dy * 10 : 0);
+        if (!best || d < best.dist) best = { id, dist: d };
+      }
+      if (best) await s.Sweep.moveTo(best.id, { transition: 'fly', transitionTime: 800 });
+    },
     retrace: () => {
       traces.invalidate();
       traceListener();
@@ -316,6 +333,7 @@ export function startTour(modelId: string): void {
     stepsButton.disabled = !footsteps;
     stepsButton.setAttribute('aria-pressed', String(stepsOn && !!footsteps));
     stepsButton.title = footsteps ? 'Footsteps on sweep changes (F)' : missing ? 'Footstep sounds are missing' : 'Start audio first';
+    ui.footsteps.value = stepsOn && !!footsteps;
   }
 
   async function startFootsteps(engine: AudioEngine): Promise<void> {
@@ -496,6 +514,7 @@ export function startTour(modelId: string): void {
       return;
     }
     if (failed) return;
+    sdkRef = sdk;
     viewerReady = true;
     showAudio(audio ? 'on' : 'off');
 

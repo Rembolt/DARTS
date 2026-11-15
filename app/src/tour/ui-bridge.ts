@@ -10,7 +10,7 @@ import { ask } from '../jev/loop';
 import { browserRecognition, pushToTalk } from '../jev/voice';
 import { createActions, type Measurement, type OpeningInfo, type RoomInfo, type SceneEffects } from '../scene/actions';
 import { setMaterialsMessage } from '../scene/materials';
-import { defaultScene, QUALITY as SCENE_QUALITY, type MaterialDefaults, type SceneState } from '../scene/state';
+import { defaultScene, isMaterialName, QUALITY as SCENE_QUALITY, type MaterialDefaults, type SceneState } from '../scene/state';
 import { createStore } from '../scene/store';
 import type { SimClient } from '../sim/client';
 import type { Bands, FromWorker, OpeningGeom, RoomGeom, ToWorker, Vec3 } from '../sim/types';
@@ -38,6 +38,8 @@ export type BridgeDeps = {
   toggleBlueprint: () => void;
   cycleBlueprintMode: () => void;
   toggleAudio: () => void;
+  toggleFootsteps?: () => void;
+  moveToPoint?: (point: Vec3) => Promise<void>;
   retrace: () => void;
   clearReverb: () => void;
   /** Optional target window for pointer placement (the Matterport iframe window). */
@@ -158,14 +160,34 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     deps.retrace();
   };
 
+  let syncingFromJev = false;
+  const syncSceneToUiSettings = (scene: SceneState) => {
+    syncingFromJev = true;
+    try {
+      const cur = ui.settings.value;
+      const wall = isMaterialName(scene.surfaces.wall) ? scene.surfaces.wall : cur.materials.wall;
+      const floor = isMaterialName(scene.surfaces.floor) ? scene.surfaces.floor : cur.materials.floor;
+      const ceiling = isMaterialName(scene.surfaces.ceiling) ? scene.surfaces.ceiling : cur.materials.ceiling;
+      ui.settings.value = {
+        materials: { wall, floor, ceiling },
+        furnishing: scene.furnishing,
+        quality: scene.quality,
+      };
+    } finally {
+      syncingFromJev = false;
+    }
+  };
+
   const effects: SceneEffects = {
     materialsChanged(scene: SceneState) {
       post(setMaterialsMessage(scene, roomsTagged));
+      syncSceneToUiSettings(scene);
       deps.retrace();
     },
     qualityChanged(scene: SceneState) {
       const q = SCENE_QUALITY[scene.quality];
       post({ type: 'setQuality', raysPerTrace: q.raysPerTrace, bounces: q.bounces, reverbRays: q.reverbRays });
+      syncSceneToUiSettings(scene);
       deps.retrace();
     },
     async openingsChanged(scene: SceneState) {
@@ -200,8 +222,10 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
     },
     clearReverb: deps.clearReverb,
     retrace: deps.retrace,
-    async moveUserTo() {
-      /* Matterport sweep teleportation is not wired to SDK move yet. */
+    async moveUserTo(roomId) {
+      const room = piGeometry?.rooms.find(r => r.id === roomId);
+      const centre = room ? toRoomInfo(room).centre : null;
+      if (centre && deps.moveToPoint) await deps.moveToPoint(centre);
     },
     measure(at) {
       const srcs = deps.getSources() ?? [];
@@ -238,6 +262,7 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
   commands.toggleBlueprint = deps.toggleBlueprint;
   commands.cycleBlueprintMode = deps.cycleBlueprintMode;
   commands.toggleAudio = deps.toggleAudio;
+  commands.toggleFootsteps = deps.toggleFootsteps ?? (() => {});
   commands.onOpeningsChanged = syncOpeningsFromUi;
   commands.onSpeakersChanged = syncSpeakersToScene;
 
@@ -305,6 +330,23 @@ export function mountTourUi(deps: BridgeDeps): TourUiBridge {
       materialById(s.materials.floor).color,
       materialById(s.materials.ceiling).color,
     ]);
+    if (!syncingFromJev) {
+      const prev = sceneStore.get();
+      sceneStore.set(
+        {
+          ...prev,
+          surfaces: {
+            ...prev.surfaces,
+            wall: isMaterialName(s.materials.wall) ? s.materials.wall : prev.surfaces.wall,
+            floor: isMaterialName(s.materials.floor) ? s.materials.floor : prev.surfaces.floor,
+            ceiling: isMaterialName(s.materials.ceiling) ? s.materials.ceiling : prev.surfaces.ceiling,
+          },
+          furnishing: s.furnishing,
+          quality: s.quality,
+        },
+        ['surfaces', 'furnishing', 'quality'],
+      );
+    }
     if (deps.getSim()) {
       post(toConfigMessage(s));
       deps.retrace();
