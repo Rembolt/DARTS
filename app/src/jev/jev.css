@@ -1,0 +1,50 @@
+.jev {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #e6edf3;
+  background: #10151e;
+  border-top: 1px solid #263042;
+}
+
+.jev-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.jev-msg {
+  padding: 6px 8px;
+  border-radius: 6px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.jev-msg.user {
+  align-self: flex-end;
+  background: #1f334d;
+}
+
+.jev-msg.assistant {
+  align-self: flex-start;
+  background: #18212e;
+}
+
+.jev-msg.step {
+  font-size: 11px;
+  color: #8a9bb3;
+}
+
+.jev-form {
+  display: flex;
+  gap: 6px;
+}
+
+.jev-form input {
+  flex: 1;
+}
