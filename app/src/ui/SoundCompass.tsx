@@ -4,6 +4,7 @@
 import { SLOT_DIRECTIONS } from '../config';
 import { PATHS_STYLE } from '../blueprint/paths';
 import { bandMean, echoRose, rosePath, viewBearing, worldBearing } from './compass';
+import { Panel } from './Panel';
 import { heardDb, outdoorTrim, TIME_OF_DAY } from './scenario';
 import { heardOpenings, ui } from './store';
 
@@ -23,7 +24,8 @@ export function SoundCompass() {
   const level = (id: string, strength: number) => heardDb(strength, id === 'outdoor' ? trim.db : 0);
 
   return (
-    <figure class="compass panel" aria-label="Where the sound comes from">
+    <Panel id="compass" title="Sound around you" className="p-compass">
+      <div class="compass-body">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} role="img">
         <circle cx={C} cy={C} r={OUTER} class="c-ring" />
         <circle cx={C} cy={C} r={OUTER * 0.55} class="c-ring faint" />
@@ -54,7 +56,7 @@ export function SoundCompass() {
         <circle cx={C} cy={C} r={3.5} class="c-you" />
       </svg>
       <figcaption>
-        <div class="c-head">You hear</div>
+
         {sound.sources.map((src, i) => (
           <div class="c-src" key={src.id}>
             <i style={{ background: color(i) }} />
@@ -79,7 +81,8 @@ export function SoundCompass() {
           ))}
         </div>
       </figcaption>
-    </figure>
+      </div>
+    </Panel>
   );
 }
 

@@ -45,9 +45,9 @@ export const SOURCES = {
 
 /** The blueprint view's look (mvp-design.md 7). The edge angle that picks its lines is `SIM.blueprintEdgeAngle`. */
 export const BLUEPRINT = {
-  background: '#ffffff',
+  background: '#f4eee2',
   opacity: 0.85,
-  lineColor: '#1f3a93',
+  lineColor: '#4a3b2c',
   /** 'solid': walls drawn as a white model with their edges on top; 'xray': edges only, seen through the walls. */
   defaultMode: 'solid' as 'solid' | 'xray',
   /** Solid mode surface colours, in material id order: wall, floor, ceiling. */

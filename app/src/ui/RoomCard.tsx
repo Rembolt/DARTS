@@ -2,9 +2,10 @@
 // room's echo dies away. All estimates from the trace.
 import { bandMean, toDb } from './compass';
 import { heardDb, outdoorTrim, quietRating } from './scenario';
+import { Panel } from './Panel';
 import { alternative, heardOpenings, ui } from './store';
 
-const W = 236;
+const W = 198;
 const H = 78;
 
 function Decay({ echoTime, slots }: { echoTime: [number, number, number]; slots: { energy: [number, number, number]; delay: number }[] }) {
@@ -13,7 +14,7 @@ function Decay({ echoTime, slots }: { echoTime: [number, number, number]; slots:
   const y = (db: number) => (Math.min(0, Math.max(-60, db)) / -60) * H;
   const names = ['low', 'mid', 'high'] as const;
   return (
-    <svg width={W} height={H + 14} class="decay" role="img" aria-label={`Echo dies away in ${echoTime[1].toFixed(1)} seconds`}>
+    <svg viewBox={`0 0 ${W} ${H + 14}`} class="decay" role="img" aria-label={`Echo dies away in ${echoTime[1].toFixed(1)} seconds`}>
       <line x1={0} y1={H} x2={W} y2={H} class="d-axis" />
       {slots.map((s, i) => {
         const db = toDb(bandMean(s.energy)) + 6;
@@ -46,11 +47,7 @@ export function RoomCard() {
   const alt = alternative();
 
   return (
-    <section class="panel room" aria-label="This room">
-      <header>
-        <h3>{ui.room.value?.label ?? 'This room'}</h3>
-        <span class={`rating ${rating.tone}`}>{rating.label}</span>
-      </header>
+    <Panel id="room" title={ui.room.value?.label ?? 'This room'} className="p-room" below="minimap" extra={<span class={`rating ${rating.tone}`}>{rating.label}</span>}>
       <div class="big">
         <b>{street}</b>
         <span>
@@ -89,6 +86,6 @@ export function RoomCard() {
         </button>
         {ui.openingsAreDemo.value && <p class="fine">Doors and windows are placed for the demo.</p>}
       </footer>
-    </section>
+    </Panel>
   );
 }

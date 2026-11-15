@@ -24,6 +24,10 @@ export class ReverbCache {
     this.times.set(roomId, [echoTime[0], echoTime[1], echoTime[2]]);
   }
 
+  clear(): void {
+    this.times.clear();
+  }
+
   has(roomId: string): boolean {
     return this.times.has(roomId);
   }
@@ -38,6 +42,8 @@ export class ReverbScheduler {
   private room: string | null = null; // the listener's current room
   private inFlight: string | null = null; // room of the job the worker is running
   private pending: ReverbRequest | null = null; // newest room asked for while a job ran
+  private staleRoom: string | null = null; // a job that started before the settings changed: its answer is out of date
+  private lastListener: Vec3 = [0, 0, 0];
 
   constructor(cache = new ReverbCache()) {
     this.cache = cache;
@@ -56,6 +62,7 @@ export class ReverbScheduler {
    * in dollhouse view) is ignored: the listener keeps its last room. Re-reporting the same room does nothing.
    */
   enterRoom(roomId: string | null | undefined, listener: Vec3): ReverbDecision {
+    this.lastListener = [listener[0], listener[1], listener[2]];
     if (!roomId || roomId === this.room) return {};
     this.room = roomId;
     const known = this.cache.get(roomId);
@@ -81,6 +88,12 @@ export class ReverbScheduler {
    * if there is one. `echoTime` is returned only when the reply is for the room the listener is in now.
    */
   onResult(roomId: string, echoTime: Bands): ReverbDecision {
+    if (this.staleRoom === roomId) {
+      // Computed with the old settings: drop it and ask again for the room the listener is in.
+      this.staleRoom = null;
+      this.inFlight = null;
+      return this.rescan();
+    }
     this.cache.set(roomId, echoTime);
     if (this.inFlight === roomId) this.inFlight = null;
     const decision: ReverbDecision = {};
@@ -88,6 +101,26 @@ export class ReverbScheduler {
     const next = this.startPending();
     if (next) decision.request = next;
     return decision;
+  }
+
+  /**
+   * Call when the settings change (materials, furnishing, quality): every cached echo time is out of date. Drops them
+   * and returns the job for the current room. A job already running will be thrown away when it answers.
+   */
+  invalidate(): ReverbDecision {
+    this.cache.clear();
+    this.pending = null;
+    if (this.inFlight !== null) {
+      this.staleRoom = this.inFlight;
+      return {};
+    }
+    return this.rescan();
+  }
+
+  private rescan(): ReverbDecision {
+    if (!this.room || this.inFlight !== null) return {};
+    this.inFlight = this.room;
+    return { request: { type: 'reverb', roomId: this.room, listener: [...this.lastListener] as Vec3 } };
   }
 
   /** Call when the worker answers a reverb job with an error: frees the worker and starts the pending job, if any.

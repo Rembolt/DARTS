@@ -22,8 +22,8 @@ describe('floorGrid', () => {
 
 describe('heatColor', () => {
   it('runs from quiet navy to loud coral', () => {
-    expect(heatColor(-60)).toEqual([24, 48, 88]);
-    expect(heatColor(0)).toEqual([206, 92, 66]);
-    expect(heatColor(-18)).toEqual([214, 150, 62]);
+    expect(heatColor(-60)).toEqual([233, 226, 210]);
+    expect(heatColor(0)).toEqual([196, 52, 30]);
+    expect(heatColor(-18)).toEqual([226, 150, 60]);
   });
 });

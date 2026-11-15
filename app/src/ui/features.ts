@@ -4,6 +4,7 @@ import { effect } from '@preact/signals';
 import type { AudioEngine } from '../audio/engine';
 import type { FromWorker, ToWorker, Vec3 } from '../sim/types';
 import { toDb } from './compass';
+import { onKeyDown, onKeyUp, onWindowBlur, plain } from './keys';
 import { floorGrid, type FloorGrid } from './heat';
 import { outdoorTrim } from './scenario';
 import { heardOpenings, ui } from './store';
@@ -11,8 +12,12 @@ import { heardOpenings, ui } from './store';
 type FieldResult = Extract<FromWorker, { type: 'field' }>;
 type Mesh = { positions: Float32Array; indices: Uint32Array; materials: Uint8Array };
 
+type WallsResult = Extract<FromWorker, { type: 'walls' }>;
+
 export type FieldClient = {
   request(source: Vec3, points: Float32Array): Promise<FieldResult>;
+  /** The walls between two points, nearest `from` first. */
+  walls(from: Vec3, to: Vec3): Promise<WallsResult['walls']>;
   /** Feed every worker message here; returns true when it was a field answer. */
   onMessage(msg: FromWorker): boolean;
 };
@@ -20,7 +25,15 @@ export type FieldClient = {
 export function createFieldClient(post: (msg: ToWorker, transfer?: Transferable[]) => void): FieldClient {
   let id = 0;
   const pending = new Map<number, (r: FieldResult) => void>();
+  const pendingWalls = new Map<number, (r: WallsResult['walls']) => void>();
   return {
+    walls(from, to) {
+      const myId = ++id;
+      return new Promise(resolve => {
+        pendingWalls.set(myId, resolve);
+        post({ type: 'walls', id: myId, from, to });
+      });
+    },
     request(source, points) {
       const myId = ++id;
       return new Promise(resolve => {
@@ -30,6 +43,11 @@ export function createFieldClient(post: (msg: ToWorker, transfer?: Transferable[
       });
     },
     onMessage(msg) {
+      if (msg.type === 'walls') {
+        pendingWalls.get(msg.id)?.(msg.walls);
+        pendingWalls.delete(msg.id);
+        return true;
+      }
       if (msg.type !== 'field') return false;
       pending.get(msg.id)?.(msg);
       pending.delete(msg.id);
@@ -45,11 +63,9 @@ export type Features = {
   onAudio(engine: AudioEngine): void;
   setRoom(id: string): void;
   setRoomLabels(labels: Map<string, string>): void;
-  /** Hold A to compare: listen on the page and inside the tour's own window. */
-  listenForCompare(win: Window): void;
+  /** Hold A to compare. Keys come from ui/keys.ts, which listens on the page and the tour's window. */
+  listenForCompare(): void;
 };
-
-const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 
 export function installFeatures(deps: {
   field: FieldClient;
@@ -130,14 +146,18 @@ export function installFeatures(deps: {
       labels = next;
       showRoom();
     },
-    listenForCompare(win) {
-      win.addEventListener('keydown', e => {
-        if (e.key.toLowerCase() === 'a' && !e.repeat && !typing(e) && !e.metaKey && !e.ctrlKey && !e.altKey) ui.comparing.value = true;
+    listenForCompare() {
+      onKeyDown(e => {
+        if (!plain(e, 'a')) return;
+        ui.comparing.value = true;
+        return true;
       });
-      win.addEventListener('keyup', e => {
-        if (e.key.toLowerCase() === 'a') ui.comparing.value = false;
+      onKeyUp(e => {
+        if (e.key.toLowerCase() !== 'a') return;
+        ui.comparing.value = false;
+        return true;
       });
-      win.addEventListener('blur', () => (ui.comparing.value = false));
+      onWindowBlur(() => (ui.comparing.value = false));
     },
   };
 }

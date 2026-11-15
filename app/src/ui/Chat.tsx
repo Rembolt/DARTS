@@ -2,6 +2,7 @@
 // change it suggests, which only happens when the user applies it.
 import { ArrowUp, Check, ChevronDown, ChevronRight, Headphones, Loader2, Mic, MicOff, X } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { plain, onKeyDown } from './keys';
 import { Orb, stateLabel } from './Orb';
 import { bandMean } from './compass';
 import { heardDb, outdoorTrim } from './scenario';
@@ -93,18 +94,17 @@ export function Chat() {
   const state = agentState();
 
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    // "/" puts the cursor in the agent, from anywhere but a text field.
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-      if (e.key === '/' && !typing) {
+  useEffect(
+    // "/" puts the cursor in the agent, from the page or from the tour.
+    () =>
+      onKeyDown(e => {
+        if (!plain(e, '/')) return;
         e.preventDefault();
         input.current?.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+        return true;
+      }),
+    [],
+  );
   const [focused, setFocused] = useState(false);
   const hint = contextHint();
 

@@ -5,6 +5,7 @@ import { signal } from '@preact/signals';
 import { toast } from 'sonner';
 import type { Bands, SourceResult, Vec3 } from '../sim/types';
 import type { FloorGrid } from './heat';
+import { DEFAULT_SETTINGS, parseSettings, type Settings } from './materials';
 import type { TimeOfDay } from './scenario';
 import type { Pose } from '../viewer';
 
@@ -55,6 +56,15 @@ export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type Selection = { kind: 'speaker' | 'opening'; id: string } | null;
 export type AudioState = 'off' | 'starting' | 'on';
 
+const SETTINGS_KEY = 'acoustic:scene';
+function loadSettings(): Settings {
+  try {
+    return parseSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'));
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
 export const ui = {
   status: signal('Loading…'),
   sim: signal(''),
@@ -79,10 +89,17 @@ export const ui = {
   /** Street noise over the floor of this storey, dB below outside per grid cell. */
   heat: signal<{ grid: FloorGrid; db: Float32Array } | null>(null),
   room: signal<{ id: string; label: string } | null>(null),
+  /** Materials, furnishing and quality: what the simulation runs with. Remembered between visits. */
+  settings: signal<Settings>(loadSettings()),
+  settingsOpen: signal(false),
   /** The headphones screen has been passed. */
   started: signal(false),
   /** The last trace, for the sound compass. `positions` matches `sources` by index. */
   sound: signal<{ listener: Vec3; sources: SourceResult[]; positions: Vec3[]; echoTime: Bands } | null>(null),
+  /** The walls between you and each source, with where they are and what they cost: for the badges and the line's steps. */
+  walls: signal<{ sourceId: string; color: number; items: { position: Vec3; lossDb: number }[] }[]>([]),
+  /** Show the strongest echoes in the blueprint (off by default: the direct line is the story). */
+  showEchoes: signal(false),
   /** Pin id → behind a wall from where the camera is. Unknown ids count as visible. */
   hidden: signal<Map<string, boolean>>(new Map()),
   placing: signal(false),
@@ -275,4 +292,18 @@ export function addProbe(position: Vec3): Probe {
 
 export function removeProbe(id: string): void {
   ui.probes.value = ui.probes.value.filter(p => p.id !== id);
+}
+
+export function setSettings(next: Settings): void {
+  ui.settings.value = next;
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* private window: not remembered */
+  }
+}
+
+export function patchSettings(patch: Partial<Omit<Settings, 'materials'>> & { materials?: Partial<Settings['materials']> }): void {
+  const cur = ui.settings.value;
+  setSettings({ ...cur, ...patch, materials: { ...cur.materials, ...patch.materials } });
 }

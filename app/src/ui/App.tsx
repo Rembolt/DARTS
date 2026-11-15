@@ -1,37 +1,43 @@
 import { useEffect } from 'preact/hooks';
+import { onKeyDown } from './keys';
 import { Toaster } from 'sonner';
 import { Chat } from './Chat';
 import { Dock } from './Dock';
 import { Hotspots } from './Hotspots';
 import { Minimap } from './Minimap';
 import { RoomCard } from './RoomCard';
+import { Settings } from './Settings';
+import { WallBadges } from './WallBadges';
 import { SoundCompass } from './SoundCompass';
+import { SurfaceStrip } from './SurfaceStrip';
 import { StartScreen, startedBefore } from './StartScreen';
 import { ui } from './store';
 
 ui.started.value = startedBefore();
 
 export function App() {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (ui.placing.value) ui.placing.value = false;
-        else ui.selection.value = null;
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  useEffect(
+    () =>
+      onKeyDown(e => {
+        if (e.key !== 'Escape' || ui.placing.value) return; // placement mode takes Esc first (main.ts)
+        if (ui.selection.value) ui.selection.value = null;
+        else if (ui.settingsOpen.value) ui.settingsOpen.value = false;
+        else return;
+        return true;
+      }),
+    [],
+  );
 
   return (
     <>
+      <WallBadges />
       <Hotspots />
-      <aside class="left-rail">
-        <Minimap />
-        <RoomCard />
-      </aside>
+      <Minimap />
+      <RoomCard />
       <SoundCompass />
       <Dock />
+      <SurfaceStrip />
+      <Settings />
       <Chat />
       <StartScreen />
       <Toaster

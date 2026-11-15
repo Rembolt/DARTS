@@ -1,6 +1,8 @@
 // The simulation worker (mvp-design.md 2 and 5). Message dispatch only; the work lives in the modules it calls.
 import { loadSim, type SimState } from './load';
 import { reverbJob } from './reverb-job';
+import { applyConfig } from './config-update';
+import { wallsAlong } from './crossings';
 import { directField } from './field';
 import { trace } from './trace';
 import type { Bands, FromWorker, ToWorker } from './types';
@@ -31,6 +33,15 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         const result = trace(state, msg);
         lastEstimate = result.echoTimeEstimate;
         post(result, [result.paths.buffer, result.pathSource.buffer]);
+        break;
+      }
+      case 'walls': {
+        if (!state) break;
+        post({ type: 'walls', id: msg.id, walls: wallsAlong(state, msg.from, msg.to) });
+        break;
+      }
+      case 'config': {
+        if (state) applyConfig(state, msg);
         break;
       }
       case 'field': {

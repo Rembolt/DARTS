@@ -22,7 +22,7 @@ export const PATHS_STYLE = {
    * One colour per source index (indoor = 0, outdoor = 1), cycled for more. Okabe-Ito vermillion and bluish green:
    * told apart under the common colour-blindnesses, dark enough to read on 85% white, and unlike the dark-blue mesh.
    */
-  sourceColors: ['#ff8a00', '#0fae95', '#1b5cf0', '#cc79a7'],
+  sourceColors: ['#c98a1d', '#d9462a', '#4d7a52', '#7a4b6b'],
   /** Opacity of the strongest path and of the weakest drawn path; the ones between are spaced evenly by rank. */
   strongestAlpha: 1,
   weakestAlpha: 0.15,
@@ -32,6 +32,8 @@ export const PATHS_STYLE = {
   gapSize: 0.2, // metres
   /** Lines start this far from the listener: lines that begin at the camera itself are clipped away (design 7). */
   listenerGap: 0.3, // metres
+  /** The sound lines end this far below the camera (metres), so they can be seen from the camera's own position. */
+  lineDrop: 0.75,
   /**
    * Source marker radius in metres: a sphere at the source, seen in perspective like the walls, so a near source looks
    * near (a screen-constant dot looked far away). 0.12 m: small up close, still about 5 px at 25 m on an 800 px view.
@@ -47,6 +49,8 @@ export type TraceOverlay = {
   sources: { position: Vec3 }[];
   paths: Float32Array; // 6 floats per segment, strongest path first (the worker's `trace` reply)
   pathSource: Uint8Array; // one source index per segment
+  /** How much of each source gets through the walls (0..1, mid band): the direct beam calms by this much on the way. */
+  directStrength?: number[];
 };
 
 export type PathGroup = { firstSegment: number; segmentCount: number; source: number };
@@ -110,7 +114,7 @@ export function pointAlong(points: Float32Array | number[], distance: number): V
 }
 
 /** Each path of a trace as one polyline running from its source to the listener, with its colour index and length. */
-export type Route = { points: Float32Array; length: number; source: number; /** 0..1, from the path's strength rank */ strength: number };
+export type Route = { points: Float32Array; length: number; source: number; /** 0..1, from the path's strength rank */ strength: number; /** the straight line source → listener, not a reflection */ direct?: boolean };
 
 export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
   const routes: Route[] = [];
@@ -136,7 +140,8 @@ export function buildRoutes(trace: TraceOverlay, style = PATHS_STYLE): Route[] {
   trace.sources.forEach((src, i) => {
     const d = Math.hypot(src.position[0] - lx, src.position[1] - ly, src.position[2] - lz);
     if (d <= style.listenerGap) return;
-    routes.push({ points: Float32Array.from([...src.position, lx, ly, lz]), length: d, source: i, strength: 1 });
+    // Drawn ending a little below the eye: a line that ends exactly at the camera projects onto one pixel and cannot be seen.
+    routes.push({ points: Float32Array.from([...src.position, lx, ly - style.lineDrop, lz]), length: d, source: i, strength: 1, direct: true });
   });
   return routes;
 }
@@ -226,7 +231,13 @@ export type PathsLayer = {
   object: Group;
   /** Shows a trace, or clears the layer with `null`. Only CPU work: the caller requests the render. */
   set(trace: TraceOverlay | null): void;
+  /** Walls between the listener and each source (index = source), from the simulation. */
+  setWalls(walls: ({ distance: number; lossDb: number }[] | undefined)[]): void;
+  /** Show the strongest echoes as thin dotted lines. */
+  setEchoes(on: boolean): void;
   setPixelRatio(pixelRatio: number): void;
+  /** The canvas size in CSS pixels, for the fat lines. */
+  setSize(width: number, height: number): void;
   /** Moves the rings and pulses to `seconds`. Only CPU work: the caller requests the render. */
   tick(seconds: number): void;
   /** True while there is something to animate. */
@@ -238,6 +249,7 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
   // Drawn over the mesh lines, ignoring depth: the paths run through walls, and the point is to see them.
   const overlay = { transparent: true, depthTest: false, depthWrite: false, vertexColors: true } as const;
   const pathMaterial = new LineBasicMaterial({ ...overlay, opacity: style.trailOpacity });
+  // The raw traced paths (up to 40 straight lines) are not drawn: they are grouped into a few beams by sonar.ts.
   const directMaterial = new LineDashedMaterial({ ...overlay, dashSize: style.dashSize, gapSize: style.gapSize });
   const sphere = new SphereGeometry(style.markerRadius, 20, 14);
   const markerMaterials: MeshBasicMaterial[] = [];
@@ -252,12 +264,14 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
     object.add(o);
   }
   object.visible = false;
-  directLines.visible = false; // the pulses along each direct route say the same, more cleanly
+  directLines.visible = false;
+  pathLines.visible = false;
 
   // The animated sound: wavefronts, pulses and bounce flashes (sonar.ts).
   const sonar = createSonar();
   object.add(sonar.object);
   let animatedSources = 0;
+  let width = 1, height = 1, pixelRatio = 1;
 
   /** Place one sphere per source; extra spheres from an earlier trace are hidden, not freed. */
   const placeMarkers = (positions: Float32Array, colors: Float32Array) => {
@@ -299,6 +313,12 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
     tick(seconds) {
       sonar.tick(seconds);
     },
+    setWalls(walls) {
+      sonar.setWalls(walls);
+    },
+    setEchoes(on) {
+      sonar.setEchoes(on);
+    },
     set(trace) {
       if (!trace) {
         object.visible = false;
@@ -306,7 +326,7 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
         return;
       }
       animatedSources = trace.sources.length;
-      sonar.set(buildRoutes(trace, style), trace.sources.map(src => src.position), style.sourceColors);
+      sonar.set(buildRoutes(trace, style), trace.sources.map(src => src.position), style.sourceColors, trace.directStrength ?? []);
       const a = buildTraceArrays(trace, style);
       fill(pathLines, a.pathPositions, a.pathColors, 4);
       fill(directLines, a.directPositions, a.directColors, 4);
@@ -316,8 +336,14 @@ export function createPathsLayer(style = PATHS_STYLE): PathsLayer {
       directLines.geometry = writeAttribute(directLines.geometry, 'lineDistance', a.directDistances, 1);
       object.visible = true;
     },
-    setPixelRatio() {
-      // Spheres are sized in metres, so the pixel ratio no longer matters; kept for the view's call.
+    setPixelRatio(ratio) {
+      pixelRatio = ratio;
+      sonar.setSize(width, height, ratio);
+    },
+    setSize(w, h) {
+      width = w;
+      height = h;
+      sonar.setSize(w, h, pixelRatio);
     },
     dispose() {
       for (const o of [pathLines, directLines]) o.geometry.dispose();

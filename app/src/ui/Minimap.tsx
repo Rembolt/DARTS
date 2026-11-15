@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { PATHS_STYLE } from '../blueprint/paths';
 import { heatColor } from './heat';
+import { Panel } from './Panel';
 import { ui } from './store';
 
 const SIZE = 196;
@@ -99,10 +100,7 @@ export function Minimap() {
   }
 
   return (
-    <figure class="panel minimap" aria-label="Street noise on this floor">
-      <header>
-        <span>Street noise, this floor</span>
-      </header>
+    <Panel id="minimap" title="Street noise, this floor" className="p-minimap">
       <div class="m-stage" style={{ width: `${SIZE}px`, height: `${SIZE}px` }}>
         <canvas ref={canvas} style={{ width: `${SIZE}px`, height: `${SIZE}px` }} />
         <svg width={SIZE} height={SIZE}>
@@ -123,6 +121,6 @@ export function Minimap() {
         <i />
         <span>Loud</span>
       </div>
-    </figure>
+    </Panel>
   );
 }

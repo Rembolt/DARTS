@@ -214,6 +214,7 @@ describe('sonar routes', () => {
     expect(routes).toHaveLength(2); // the reflected path and the direct route
     expect(Array.from(routes[0].points.slice(0, 3))).toEqual([4, 0, 0]);
     expect(routes[0].points[routes[0].points.length - 3]).toBeCloseTo(0.3, 5);
-    expect(Array.from(routes[1].points.slice(-3))).toEqual([0, 0, 0]);
+    expect(routes[1].points[routes[1].points.length - 2]).toBeCloseTo(-PATHS_STYLE.lineDrop, 5); // ends a little below the eye
+    expect(routes[1].direct).toBe(true);
   });
 });

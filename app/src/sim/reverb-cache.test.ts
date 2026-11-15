@@ -96,3 +96,24 @@ describe('ReverbScheduler', () => {
     expect(s.busy).toBe(true);
   });
 });
+
+describe('ReverbScheduler.invalidate', () => {
+  it('drops cached times and asks again for the current room', () => {
+    const s = new ReverbScheduler();
+    s.enterRoom('a', [0, 0, 0]);
+    s.onResult('a', [1, 1, 1]);
+    expect(s.cache.has('a')).toBe(true);
+    const d = s.invalidate();
+    expect(s.cache.has('a')).toBe(false);
+    expect(d.request).toMatchObject({ type: 'reverb', roomId: 'a' });
+  });
+  it('throws away the answer of a job that started under the old settings, then asks again', () => {
+    const s = new ReverbScheduler();
+    const first = s.enterRoom('a', [0, 0, 0]);
+    expect(first.request).toBeTruthy(); // job in flight
+    expect(s.invalidate().request).toBeUndefined(); // cannot start a second one
+    const d = s.onResult('a', [9, 9, 9]);
+    expect(s.cache.has('a')).toBe(false); // the stale answer is not kept
+    expect(d.request).toMatchObject({ roomId: 'a' }); // and the room is asked for again
+  });
+});

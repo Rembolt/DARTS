@@ -8,6 +8,8 @@ export type FloorGrid = {
   h: number;
   /** Indices (row * w + col) of cells with floor under them. */
   cells: Int32Array;
+  /** Mean height of the floor under these cells, metres. */
+  floorY: number;
   /** One point per cell, at the listener's height: what the worker measures. */
   points: Float32Array;
 };
@@ -40,6 +42,7 @@ export function floorGrid(
   const x0 = lx - o.radius, z0 = lz - o.radius;
   const w = Math.ceil((o.radius * 2) / o.step), h = w;
   const mask = new Uint8Array(w * h);
+  let floorSum = 0, floorN = 0;
   const P = mesh.positions, I = mesh.indices;
   const tris = Math.min(mesh.materials.length, I.length / 3);
   for (let t = 0; t < tris; t++) {
@@ -48,6 +51,8 @@ export function floorGrid(
     const ay = P[a + 1], by = P[b + 1], cy = P[c + 1];
     const drop = ly - (ay + by + cy) / 3;
     if (drop < o.minDrop || drop > o.maxDrop) continue;
+    floorSum += (ay + by + cy) / 3;
+    floorN++;
     const ax = P[a], az = P[a + 2], bx = P[b], bz = P[b + 2], cx = P[c], cz = P[c + 2];
     const c0 = Math.max(0, Math.floor((Math.min(ax, bx, cx) - x0) / o.step));
     const c1 = Math.min(w - 1, Math.floor((Math.max(ax, bx, cx) - x0) / o.step));
@@ -70,16 +75,16 @@ export function floorGrid(
     points[k * 3 + 1] = ly;
     points[k * 3 + 2] = z0 + (Math.floor(i / w) + 0.5) * o.step;
   });
-  return { x0, z0, step: o.step, w, h, cells, points };
+  return { x0, z0, step: o.step, w, h, cells, floorY: floorN ? floorSum / floorN : ly - 1.5, points };
 }
 
-/** Heat colour for a level in dB below outside: quiet navy, then muted teal, amber and brick (calm on a dark panel). */
+/** Heat colour for a level in dB below outside: bone for quiet, then straw, ochre and vermilion (one warm ramp, like a printed map). */
 export function heatColor(db: number): [number, number, number] {
   const stops: [number, [number, number, number]][] = [
-    [-45, [24, 48, 88]],
-    [-30, [38, 120, 128]],
-    [-18, [214, 150, 62]],
-    [-6, [206, 92, 66]],
+    [-45, [233, 226, 210]],
+    [-30, [205, 190, 150]],
+    [-18, [226, 150, 60]],
+    [-6, [196, 52, 30]],
   ];
   if (db <= stops[0][0]) return stops[0][1];
   for (let i = 1; i < stops.length; i++) {

@@ -1,6 +1,6 @@
 import { checkBundle, loadMesh, loadServerConfig } from './api';
 import { createModeSwitch } from './blueprint/mode';
-import { bindShortcut, createToggle } from './blueprint/toggle';
+import { createToggle } from './blueprint/toggle';
 import { createBlueprint } from './blueprint/view';
 import { createAudioEngine, type AudioEngine } from './audio/engine';
 import { defaultSourcePositions } from './audio/positions';
@@ -12,7 +12,10 @@ import { ReverbScheduler } from './sim/reverb-cache';
 import type { FromWorker, Vec3 } from './sim/types';
 import { mountUi } from './ui/mount';
 import { addProbe, commands, ui, addSpeaker, setOpenings, setSpeakers, type Speaker } from './ui/store';
+import { surfaceColors, toConfigMessage } from './ui/materials';
+import { effect } from '@preact/signals';
 import { createFieldClient, installFeatures } from './ui/features';
+import * as keys from './ui/keys';
 import { localAgent } from './ui/localAgent';
 import { mockOpenings } from './ui/mock';
 import { listenForPlacement } from './ui/placement';
@@ -20,6 +23,7 @@ import { createOcclusion, type Occlusion } from './ui/occlusion';
 import { connectViewer, formatPose, viewerUrl, type Pose } from './viewer';
 
 const iframe = document.getElementById('viewer') as HTMLIFrameElement;
+if (import.meta.env.DEV) (window as unknown as { __ui: typeof ui }).__ui = ui;
 const stage = document.getElementById('stage')!;
 const canvas = document.getElementById('blueprint') as HTMLCanvasElement;
 
@@ -49,8 +53,11 @@ commands.cycleBlueprintMode = () => {
   blueprint.setMode(modeSwitch.next());
   showToggle();
 };
-const listenForShortcut = bindShortcut(toggle, flipBlueprint);
-listenForShortcut(document);
+keys.onKeyDown(e => {
+  if (!toggle.isShortcut(e.key, e.target as { tagName?: string; isContentEditable?: boolean } | null) || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  flipBlueprint();
+  return true;
+});
 new ResizeObserver(([entry]) => {
   blueprint.resize(entry.contentRect, devicePixelRatio);
   ui.stage.value = { w: entry.contentRect.width, h: entry.contentRect.height };
@@ -82,10 +89,67 @@ function setEchoTime(echoTime: [number, number, number], why: string): void {
   if (swapped && debugLog) console.info(`[${(performance.now() / 1000).toFixed(2)} s] reverb swap (${why})`, echoTime.map(t => t.toFixed(2)));
 }
 
+/** Ask where the walls are between you and each source. One round at a time; the newest listener wins. */
+let wallsBusy = false;
+let wallsDirty = false;
+async function refreshWalls(): Promise<void> {
+  if (!sim || !sources || !listener) return;
+  if (wallsBusy) {
+    wallsDirty = true;
+    return;
+  }
+  wallsBusy = true;
+  const from: Vec3 = [...listener];
+  const list = [...sources];
+  try {
+    const found = await Promise.all(list.map(s => field.walls(from, s.position)));
+    blueprint.setWalls(found.map(w => w.map(x => ({ distance: x.distance, lossDb: x.lossDb[1] }))));
+    ui.walls.value = list.map((s, i) => {
+      const d = [s.position[0] - from[0], s.position[1] - from[1], s.position[2] - from[2]];
+      const len = Math.hypot(d[0], d[1], d[2]) || 1;
+      return {
+        sourceId: s.id,
+        color: i,
+        items: found[i].map(w => ({
+          position: [from[0] + (d[0] / len) * w.distance, from[1] + (d[1] / len) * w.distance, from[2] + (d[2] / len) * w.distance] as Vec3,
+          lossDb: w.lossDb[1],
+        })),
+      };
+    });
+  } finally {
+    wallsBusy = false;
+    if (wallsDirty) {
+      wallsDirty = false;
+      void refreshWalls();
+    }
+  }
+}
+
 function sendTrace(position: Vec3 | null): void {
   if (!position || !sim || !sources) return;
   sim.worker.postMessage({ type: 'trace', id: ++traceId, listener: position, sources });
 }
+
+/**
+ * Send the settings to the worker and refresh everything that depended on them: the blueprint's colours, the traced
+ * levels, and the cached echo time of every room (each is out of date and is measured again as you walk in).
+ */
+function applySettings(): void {
+  const s = ui.settings.value;
+  blueprint.setSurfaceColors(surfaceColors(s));
+  if (!sim) return;
+  sim.worker.postMessage(toConfigMessage(s));
+  traces.invalidate();
+  traceListener();
+  estimateRoom = undefined;
+  sendReverb(rooms.invalidate().request);
+}
+effect(() => {
+  ui.settings.value; // re-run on every change
+  applySettings();
+});
+effect(() => blueprint.setEchoes(ui.showEchoes.value));
+effect(() => blueprint.setHeat(ui.heat.value));
 
 function sendReverb(request: ReturnType<ReverbScheduler['enterRoom']>['request']): void {
   if (request && sim) sim.worker.postMessage(request);
@@ -126,6 +190,7 @@ function onWorkerMessage(msg: FromWorker): void {
   switch (msg.type) {
     case 'trace': {
       audio?.applySimResult(msg.sources);
+      void refreshWalls();
       if (sources) {
         const known = rooms.currentRoom ? rooms.cache.get(rooms.currentRoom) : undefined;
         ui.sound.value = { listener: msg.listener, sources: msg.sources, positions: sources.map(s => s.position), echoTime: known ?? msg.echoTimeEstimate };
@@ -134,6 +199,7 @@ function onWorkerMessage(msg: FromWorker): void {
           sources: sources.map(s => ({ position: s.position })),
           paths: msg.paths,
           pathSource: msg.pathSource,
+          directStrength: msg.sources.map(r => (r.direct[0] + r.direct[1] + r.direct[2]) / 3),
         });
       }
       // Until the room's reverb job answers, the trace's estimate stands in (5.5): once per room, not every trace.
@@ -249,6 +315,7 @@ async function startSimulation(modelId: string): Promise<void> {
     const ready = await client.load(obj, simConfig());
     client.worker.addEventListener('message', event => onWorkerMessage((event as MessageEvent<FromWorker>).data));
     sim = client;
+    applySettings(); // saved settings may differ from the defaults the worker loaded with
     traceListener();
     enterRoom();
     ui.sim.value = formatSimReady(ready);
@@ -292,6 +359,8 @@ async function start(): Promise<void> {
 
   ui.status.value = 'Loading tour…';
   // Never write the SDK key to the page text or the console. It appears only in this src.
+  // Every page the tour loads gets the shortcuts (a click into the tour moves keyboard focus into that page).
+  iframe.addEventListener('load', () => keys.attach(iframe.contentWindow));
   iframe.src = viewerUrl(config);
 
   const sdk = await connectViewer(iframe, message => {
@@ -300,8 +369,6 @@ async function start(): Promise<void> {
   if (!sdk) return;
 
   ui.status.value = `Tour playing: model ${config.modelId}`;
-  // Same origin, so the tour's own window can be listened to: after a click into the tour, keys go there.
-  if (iframe.contentWindow) listenForShortcut(iframe.contentWindow);
   sdk.Camera.pose.subscribe(pose => {
     ui.pose.value = { ...pose }; // the SDK may reuse one object; a copy makes the signal fire
     if (import.meta.env.DEV) (window as unknown as { __pose: string }).__pose = formatPose(pose);
@@ -343,32 +410,22 @@ async function start(): Promise<void> {
   document.addEventListener('keydown', logPoint);
   iframe.contentWindow?.addEventListener('keydown', logPoint);
 
-  // Click to add a speaker (v2-design.md 5.4): the S key toggles placement, a click in the tour drops it at the pointer.
-  const placeKey = (event: KeyboardEvent) => {
-    const typing = event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
-    if (event.key.toLowerCase() === 's' && !event.repeat && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      ui.placeKind.value = 'speaker';
+  // Click to add a speaker (v2-design.md 5.4): S toggles speaker placement, L a listening probe, a click in the tour drops it.
+  // Keys come from ui/keys.ts, which listens on the page and on the tour's window (clicking the tour moves focus there).
+  keys.attach(iframe.contentWindow);
+  iframe.addEventListener('load', () => keys.attach(iframe.contentWindow));
+  keys.onKeyDown(event => {
+    if (keys.plain(event, 's') || keys.plain(event, 'l')) {
+      ui.placeKind.value = event.key.toLowerCase() === 'l' ? 'probe' : 'speaker';
       ui.placing.value = !ui.placing.value;
-    } else if (event.key.toLowerCase() === 'l' && !event.repeat && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      ui.placeKind.value = 'probe';
-      ui.placing.value = !ui.placing.value;
-    } else if (event.key === 'Escape') ui.placing.value = false;
-  };
-  document.addEventListener('keydown', placeKey);
-  iframe.contentWindow?.addEventListener('keydown', placeKey);
-  features.listenForCompare(window);
-  if (iframe.contentWindow) features.listenForCompare(iframe.contentWindow);
-  // Room names for the room card, from the tour's own room list (labels may be empty).
-  try {
-    const roomData = (sdk as unknown as { Room: { data?: { subscribe(o: { onCollectionUpdated(c: Record<string, { label?: string }>): void }): unknown } } }).Room.data;
-    roomData?.subscribe({
-      onCollectionUpdated(c) {
-        features.setRoomLabels(new Map(Object.entries(c).map(([id, r]) => [id, (r.label ?? '').trim()])));
-      },
-    });
-  } catch (err) {
-    console.warn('room labels unavailable', err);
-  }
+      return true;
+    }
+    if (event.key === 'Escape' && ui.placing.value) {
+      ui.placing.value = false;
+      return true;
+    }
+  });
+  features.listenForCompare();
   if (iframe.contentWindow) {
     listenForPlacement(
       iframe.contentWindow,

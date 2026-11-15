@@ -1,5 +1,5 @@
 // Top bar: where we are on the left, view and sound controls on the right.
-import { Box, Crosshair, Layers, Plus, Volume2, VolumeX, X } from 'lucide-preact';
+import { AudioWaveform, Box, Crosshair, Layers, Plus, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-preact';
 import { alternative, commands, ui } from './store';
 
 /** What the status line says to a person, not the raw log text. */
@@ -39,6 +39,11 @@ export function Dock() {
             <Box size={16} /> <span class="lbl">{bp.mode}</span>
           </button>
         )}
+        {bp.on && (
+          <button type="button" class={`tool ${ui.showEchoes.value ? 'on' : ''}`} aria-pressed={ui.showEchoes.value} title="Show the strongest echoes" onClick={() => (ui.showEchoes.value = !ui.showEchoes.value)}>
+            <AudioWaveform size={16} /> <span class="lbl">Echoes</span>
+          </button>
+        )}
         <span class="sep" />
         <button
           type="button"
@@ -58,6 +63,15 @@ export function Dock() {
           onClick={() => place('probe')}
         >
           {placing && kind === 'probe' ? <X size={16} /> : <Crosshair size={16} />} <span class="lbl">{placing && kind === 'probe' ? 'Cancel' : 'Probe'}</span>
+        </button>
+        <button
+          type="button"
+          class={`tool ${ui.settingsOpen.value ? 'on' : ''}`}
+          aria-pressed={ui.settingsOpen.value}
+          title="Settings: materials, furnishing, quality"
+          onClick={() => (ui.settingsOpen.value = !ui.settingsOpen.value)}
+        >
+          <SlidersHorizontal size={16} /> <span class="lbl">Settings</span>
         </button>
         <button
           type="button"

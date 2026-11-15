@@ -31,7 +31,11 @@ export type ToWorker =
   | { type: 'trace'; id: number; listener: Vec3; sources: { id: string; position: Vec3 }[] }
   | { type: 'reverb'; roomId: string; listener: Vec3 }
   /** Direct sound only, one ray per point: for the heat map and listening probes. Cheap: thousands of points per call. */
-  | { type: 'field'; id: number; source: Vec3; points: Float32Array };
+  | { type: 'field'; id: number; source: Vec3; points: Float32Array }
+  /** The walls between two points, in order from `from`: for drawing what stands between a listener and a source. */
+  | { type: 'walls'; id: number; from: Vec3; to: Vec3 }
+  /** Change the simulation settings while it runs (v2-design.md 3 and 4). Anything left out stays as it was. */
+  | { type: 'config'; materials?: Partial<SimConfig['materials']>; furnishing?: number; raysPerTrace?: number; bounces?: number; reverbRays?: number };
 
 export type FromWorker =
   | {
@@ -56,6 +60,7 @@ export type FromWorker =
       pathSource: Uint8Array; // which source each segment belongs to
     }
   | { type: 'reverb'; roomId: string; echoTime: Bands; ms: number }
+  | { type: 'walls'; id: number; walls: { distance: number; lossDb: Bands }[] }
   /** Per point, in the request's order: strength left after walls (3 bands, 0..1) and walls crossed. */
   | { type: 'field'; id: number; direct: Float32Array; walls: Uint8Array; ms: number }
   | { type: 'error'; message: string };
