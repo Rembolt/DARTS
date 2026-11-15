@@ -1,0 +1,254 @@
+/* The front door. Scoped under .fd (the #front element), so the tour's styles in index.html are untouched. */
+.fd {
+  --fd-bg: #f7f7f5;
+  --fd-surface: #ffffff;
+  --fd-text: #1b1b1b;
+  --fd-muted: #5c5c5c;
+  --fd-border: #d9d9d4;
+  --fd-accent: #1f3a93;
+  --fd-accent-text: #ffffff;
+  --fd-pick: #e8eefc;
+  --fd-alert-bg: #fdecea;
+  --fd-alert-border: #c62828;
+  --fd-health-bg: #fff6e0;
+  --fd-health-border: #b7791f;
+  --fd-focus: #1f6feb;
+
+  flex: 1;
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--fd-bg);
+  color: var(--fd-text);
+  font: 15px/1.45 system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .fd {
+    --fd-bg: #151515;
+    --fd-surface: #1f1f1f;
+    --fd-text: #ececec;
+    --fd-muted: #a8a8a8;
+    --fd-border: #3a3a3a;
+    --fd-accent: #5b7fe0;
+    --fd-accent-text: #0d0d0d;
+    --fd-pick: #1d2846;
+    --fd-alert-bg: #3a1714;
+    --fd-alert-border: #ef6c5b;
+    --fd-health-bg: #352a12;
+    --fd-health-border: #d9a441;
+    --fd-focus: #79a6ff;
+  }
+}
+.fd .fd-inner {
+  max-width: 820px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+}
+.fd *,
+.fd *::before,
+.fd *::after {
+  box-sizing: border-box;
+}
+.fd h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+.fd p {
+  margin: 0;
+}
+.fd .fd-intro,
+.fd .fd-hint {
+  color: var(--fd-muted);
+}
+.fd .fd-intro {
+  margin-bottom: 16px;
+}
+.fd .fd-hint {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.fd :focus-visible {
+  outline: 2px solid var(--fd-focus);
+  outline-offset: 2px;
+}
+
+.fd .fd-health {
+  margin: 0 0 16px;
+  padding: 8px 12px 8px 28px;
+  border-left: 4px solid var(--fd-health-border);
+  background: var(--fd-health-bg);
+}
+
+.fd .fd-form label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.fd .fd-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.fd textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--fd-border);
+  border-radius: 6px;
+  background: var(--fd-surface);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+.fd button {
+  flex: none;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--fd-accent);
+  border-radius: 6px;
+  background: var(--fd-accent);
+  color: var(--fd-accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fd button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fd .fd-form[aria-busy='true'] .fd-ask {
+  background: transparent;
+  color: var(--fd-text);
+  border-color: var(--fd-border);
+}
+
+.fd .fd-status {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fd-muted);
+}
+.fd .fd-status li::before {
+  content: '· ';
+}
+.fd .fd-answer {
+  margin-top: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fd .fd-alert {
+  margin-top: 14px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--fd-alert-border);
+  background: var(--fd-alert-bg);
+}
+.fd .fd-alert p + p {
+  margin-top: 4px;
+}
+.fd [hidden] {
+  display: none !important;
+}
+
+.fd .fd-cards {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.fd .fd-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--fd-surface);
+}
+.fd .fd-card.highlighted {
+  border-color: var(--fd-accent);
+  box-shadow: 0 0 0 1px var(--fd-accent);
+  background: linear-gradient(var(--fd-pick), var(--fd-surface) 60px);
+}
+.fd .fd-card > * + * {
+  margin-top: 3px;
+}
+.fd .fd-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.fd .fd-card h3 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.fd .fd-fit {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fd .fd-picked {
+  color: var(--fd-accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+.fd .fd-facts,
+.fd .fd-name,
+.fd .fd-estimated {
+  color: var(--fd-muted);
+}
+.fd .fd-estimated {
+  font-size: 13px;
+}
+.fd .fd-reason {
+  color: var(--fd-alert-border);
+}
+.fd .fd-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+.fd .fd-rooms {
+  flex: 1 1 100%;
+  min-width: 0;
+  order: 2;
+}
+.fd .fd-rooms summary {
+  cursor: pointer;
+}
+.fd .fd-enter {
+  margin-left: auto;
+  order: 1;
+}
+.fd .fd-table-wrap {
+  overflow-x: auto;
+  margin-top: 6px;
+}
+.fd table {
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.fd th,
+.fd td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--fd-border);
+  text-align: left;
+}
+.fd thead th {
+  font-weight: 600;
+  color: var(--fd-muted);
+}
+.fd td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.fd .fd-foot {
+  margin-top: 24px;
+  text-align: right;
+}
+.fd a {
+  color: var(--fd-accent);
+}
