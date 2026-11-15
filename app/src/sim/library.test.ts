@@ -2,7 +2,7 @@ import { it, expect } from 'vitest';
 import { MATERIALS } from '../../../server/src/shared/materials';
 import { simConfig } from '../config';
 import { traceEarly } from './early';
-import { applySetMaterials, applySetQuality, effectiveAbsorption, materialOf, surfaceClass, type SurfaceTable } from './library';
+import { FLOOR_FURNISHING_SCALE, applySetMaterials, applySetQuality, effectiveAbsorption, materialOf, surfaceClass, type SurfaceTable } from './library';
 import { reverbJob } from './reverb-job';
 import { mulberry32 } from './sampling';
 import { boxRoom } from './testMeshes';
@@ -84,9 +84,21 @@ it('room values override house values for that room only', () => {
     roomFurnishing: new Map([[1, 0]]),
   };
   expect(materialOf(table, 1, 1)).toEqual({ material: MATERIALS.tile, furnishing: 0 });
-  expect(materialOf(table, 1, 0)).toEqual({ material: MATERIALS.wood_floor, furnishing: 0.15 });
-  expect(materialOf(table, 1, -1)).toEqual({ material: MATERIALS.wood_floor, furnishing: 0.15 });
+  expect(materialOf(table, 1, 0)).toEqual({ material: MATERIALS.wood_floor, furnishing: 0.15 * FLOOR_FURNISHING_SCALE });
+  expect(materialOf(table, 1, -1)).toEqual({ material: MATERIALS.wood_floor, furnishing: 0.15 * FLOOR_FURNISHING_SCALE });
   expect(materialOf(table, 0, 1).material).toEqual(MATERIALS.wall_tile);
   // Exterior walls take the house's exterior material, with the room's furnishing.
   expect(materialOf(table, 3, 1)).toEqual({ material: MATERIALS.siding_wall, furnishing: 0 });
+});
+
+it('puts furniture absorption on the floor only, as extra absorbing area', async () => {
+  const { mvpTable } = await import('./library');
+  const table = mvpTable({ ...simConfig(), furnishing: 0.15 });
+  expect(materialOf(table, 0, -1).furnishing).toBe(0); // walls
+  expect(materialOf(table, 2, -1).furnishing).toBe(0); // ceiling
+  expect(materialOf(table, 3, -1).furnishing).toBe(0); // exterior walls
+  expect(materialOf(table, 1, -1).furnishing).toBeCloseTo(0.15 * FLOOR_FURNISHING_SCALE, 10);
+  table.roomFurnishing.set(0, 0.3);
+  expect(materialOf(table, 1, 0).furnishing).toBeCloseTo(0.3 * FLOOR_FURNISHING_SCALE, 10);
+  expect(materialOf(table, 0, 0).furnishing).toBe(0);
 });
