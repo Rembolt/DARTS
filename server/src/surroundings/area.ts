@@ -5,8 +5,8 @@ import type { AreaClass, AreaSummary, IndexRow, LocatedSource } from '../shared/
 
 /** The counts that decide the area class. Tuned on ten addresses in Task C4 (see AGENTS.md). */
 export const AREA_THRESHOLDS = {
-  /** `warehouse` at least this → industrial. */
-  industrialWarehouses: 3,
+  /** `warehouse` at least this → industrial. The spec's 3 made a retail strip with 4 industrial (Task C4). */
+  industrialWarehouses: 10,
   /** `commercial building` + `parking lot` at least this, with fewer than `houses` houses → commercial. */
   commercialBuildingsAndLots: 6,
   /** `commercial building` at least this, with at least `houses` houses → city. */

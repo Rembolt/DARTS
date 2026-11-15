@@ -27,7 +27,10 @@ describe('classifyArea', () => {
   it('classifies the measured places', () => {
     expect(classifyArea({ house: 82, 'commercial building': 0 })).toBe('residential');
     expect(classifyArea({ house: 0, 'commercial building': 13, 'parking lot': 3 })).toBe('commercial');
-    expect(classifyArea({ warehouse: 3, house: 30 })).toBe('industrial');
+    // Task C4: 6203 W 34th St (industrial) found 34 warehouses; 6400 Southwest Fwy (a retail strip) found 4.
+    expect(classifyArea({ warehouse: 34, house: 39, 'commercial building': 44 })).toBe('industrial');
+    expect(classifyArea({ warehouse: 10, house: 30 })).toBe('industrial');
+    expect(classifyArea({ warehouse: 4, house: 12, 'commercial building': 21, 'parking lot': 1 })).toBe('commercial');
     expect(classifyArea({ house: 25, 'commercial building': 4 })).toBe('city');
     expect(classifyArea({})).toBe('nature');
   });
