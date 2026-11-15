@@ -106,6 +106,15 @@ describe('renderCard', () => {
     expect(t).toContain('Outside noise inside: not estimated · Escaping: not estimated');
   });
 
+  it('shows a building name but not a name that only repeats the address', () => {
+    expect(text(renderCard({ ...OK, name: '1234 Oak St.' }, OPTS)).match(/1234 Oak St/g)).toHaveLength(1);
+    expect(text(renderCard({ ...OK, name: 'The Oakwood Lofts' }, OPTS))).toContain('The Oakwood Lofts');
+  });
+
+  it('does not use the page header style for the card title', () => {
+    expect(renderCard(OK, OPTS).querySelector('header')).toBeNull();
+  });
+
   it('marks the card the assistant picked', () => {
     const el = renderCard(OK, { ...OPTS, highlighted: true });
     expect(el.classList.contains('highlighted')).toBe(true);

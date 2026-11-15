@@ -60,15 +60,17 @@ function okCard(summary: Ok, options: { highlighted: boolean; onEnter(modelId: s
   const card = el('article', 'fd-card');
   if (options.highlighted) card.classList.add('highlighted');
 
-  const header = el('header', 'fd-card-head');
+  const header = el('div', 'fd-card-head');
   const title = [summary.address, kindWord(summary.kind)];
   if (summary.listing.sqft !== null) title.push(fmt.sqft(summary.listing.sqft));
   header.append(el('h3', undefined, title.join(' · ')), el('span', 'fd-fit', `fit ${fmt.percent(summary.score)}`));
   card.append(header);
   if (options.highlighted) card.append(el('p', 'fd-picked', 'Picked by the assistant'));
 
+  // The tour's name is often the street address again ('5506 Russett Dr'): show it only when it says something new.
   const name = summary.name ?? summary.listing.buildingName;
-  if (name) card.append(el('p', 'fd-name', name));
+  const firstWord = (s: string) => s.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+  if (name && firstWord(name) !== firstWord(summary.address)) card.append(el('p', 'fd-name', name));
 
   const facts: string[] = [];
   if (summary.listing.beds !== null) facts.push(`${summary.listing.beds} beds`);
@@ -107,7 +109,7 @@ function okCard(summary: Ok, options: { highlighted: boolean; onEnter(modelId: s
 export function renderCard(summary: QuickSummary, options: { highlighted: boolean; onEnter(modelId: string): void }): HTMLElement {
   if (summary.ok) return okCard(summary, options);
   const card = el('article', 'fd-card failed');
-  const header = el('header', 'fd-card-head');
+  const header = el('div', 'fd-card-head');
   header.append(el('h3', undefined, summary.address ?? summary.modelId));
   card.append(header, el('p', 'fd-reason', summary.reason.message));
   return card;
