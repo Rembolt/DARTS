@@ -1,7 +1,7 @@
 // The tracing half of the late-reverb job (mvp-design.md 5.5 steps 1 and 2). The histogram, decay curve and echo
 // time live in decay.ts; this module only delivers arrivals.
 import { traceRays } from './early';
-import { firstHit } from './geometry';
+import { firstTracedHit } from './layers';
 import type { SimState } from './load';
 import { mulberry32, type Rng } from './sampling';
 import type { Bands, Vec3 } from './types';
@@ -31,11 +31,11 @@ const CANDIDATES: Vec3[] = [
 export function virtualSource(state: SimState, listener: Vec3): Vec3 {
   const at = (d: Vec3, k: number): Vec3 => [listener[0] + d[0] * k, listener[1] + d[1] * k, listener[2] + d[2] * k];
   for (const d of CANDIDATES) {
-    if (!firstHit(state.index, listener, d, VIRTUAL_SOURCE_CLEARANCE)) return at(d, VIRTUAL_SOURCE_DISTANCE);
+    if (!firstTracedHit(state, listener, d, VIRTUAL_SOURCE_CLEARANCE)) return at(d, VIRTUAL_SOURCE_DISTANCE);
   }
   let best = CANDIDATES[0], room = 0;
   for (const d of CANDIDATES) {
-    const clear = firstHit(state.index, listener, d)?.distance ?? Infinity;
+    const clear = firstTracedHit(state, listener, d)?.distance ?? Infinity;
     if (clear > room) { room = clear; best = d; }
   }
   return at(best, Math.min(VIRTUAL_SOURCE_DISTANCE, room / 2));

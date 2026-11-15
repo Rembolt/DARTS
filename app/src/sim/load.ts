@@ -1,7 +1,8 @@
 // The load step (mvp-design.md 5.1, steps 2 to 7), run once in the worker.
-import { extractLines } from './edges';
+import { extractLinesTagged } from './edges';
 import { buildRayIndex, type RayIndex } from './geometry';
 import { mvpTable, resolveSurfaces, type ResolvedSurface, type SetMaterials, type SurfaceTable } from './library';
+import { layerCounts, layersAfterReorder } from './layers';
 import { tagMaterials } from './materials';
 import { faceNormals } from './normals';
 import { parseObj, type Mesh } from './obj';
@@ -30,10 +31,27 @@ export type SimState = {
   /** Per triangle: index into `surfaces`. */
   surface: Uint16Array;
   surfaces: ResolvedSurface[];
+  /** Per triangle: mesh layer (OBJ group; 0 is 'house'). */
+  layer: Uint8Array;
+  layerIds: string[];
+  /** Per layer: do rays hit it (`setLayers`). */
+  layerTraced: boolean[];
+  /** Every layer traced: ray casts take the plain path. */
+  allTraced: boolean;
 };
 
+/** Per-triangle layers in index order, with their names. */
+export type Layers = { layer: Uint8Array; ids: string[] };
+
 /** The state for a mesh whose ray index is built. Call after `buildRayIndex`: it reorders `mesh.indices`. */
-export function createSimState(mesh: Mesh, index: RayIndex, normals: Float32Array, surfaceClass: Uint8Array, config: SimConfig): SimState {
+export function createSimState(
+  mesh: Mesh,
+  index: RayIndex,
+  normals: Float32Array,
+  surfaceClass: Uint8Array,
+  config: SimConfig,
+  layers: Layers = { layer: new Uint8Array(mesh.indices.length / 3), ids: ['house'] },
+): SimState {
   const triangles = mesh.indices.length / 3;
   const state: SimState = {
     mesh,
@@ -48,6 +66,10 @@ export function createSimState(mesh: Mesh, index: RayIndex, normals: Float32Arra
     lastSetMaterials: null,
     surface: new Uint16Array(triangles),
     surfaces: [],
+    layer: layers.layer,
+    layerIds: layers.ids,
+    layerTraced: layers.ids.map(() => true),
+    allTraced: true,
   };
   resolveSurfaces(state);
   return state;
@@ -70,17 +92,25 @@ function bounds(positions: Float32Array): { min: Vec3; max: Vec3 } {
 
 export function loadSim(obj: ArrayBuffer, config: SimConfig): { state: SimState; ready: ReadyMessage } {
   const t0 = performance.now();
-  const mesh = parseObj(obj);
+  const { groups, triangleGroup, ...mesh } = parseObj(obj);
+  // A copy of the triangles in file order, to find each one's group again after the index reorders them.
+  const before = groups.length > 1 ? mesh.indices.slice() : null;
   const t1 = performance.now();
   // MeshBVH reorders mesh.indices in place. Everything per triangle is computed after this line, so triangle
   // numbers match the `triangle` that firstHit reports.
   const index = buildRayIndex(mesh);
+  const layer = before
+    ? layersAfterReorder(before, triangleGroup, mesh.indices, mesh.positions.length / 3)
+    : new Uint8Array(triangleGroup.length);
   const t2 = performance.now();
   const normals = faceNormals(mesh);
   const materials = tagMaterials(mesh, normals);
-  const state = createSimState(mesh, index, normals, materials, config);
+  const state = createSimState(mesh, index, normals, materials, config, { layer, ids: groups });
   const t3 = performance.now();
-  const lines = extractLines(mesh, config.blueprintEdgeAngle, normals);
+  const tagged = extractLinesTagged(mesh, config.blueprintEdgeAngle, normals);
+  const lines = tagged.lines;
+  const lineLayers = new Uint8Array(tagged.triangles.length);
+  for (let i = 0; i < lineLayers.length; i++) lineLayers[i] = layer[tagged.triangles[i]];
   const t4 = performance.now();
 
   const { min, max } = bounds(mesh.positions);
@@ -99,10 +129,10 @@ export function loadSim(obj: ArrayBuffer, config: SimConfig): { state: SimState;
         positions: mesh.positions.slice(),
         indices: mesh.indices.slice(),
         materials: materials.slice(),
-        layers: new Uint8Array(mesh.indices.length / 3),
+        layers: layer.slice(),
       },
-      layers: [{ id: 'house', triangles: mesh.indices.length / 3 }],
-      lineLayers: new Uint8Array(lines.length / 6),
+      layers: layerCounts(layer, groups),
+      lineLayers,
     },
   };
 }

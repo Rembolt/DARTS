@@ -1,6 +1,7 @@
 // Tiny synthetic meshes for sim tests, built directly in viewer coordinates (Y up). Not shipped code.
 import { simConfig } from '../config';
 import { buildRayIndex } from './geometry';
+import { layersAfterReorder } from './layers';
 import { createSimState, type SimState } from './load';
 import { tagMaterials } from './materials';
 import { faceNormals } from './normals';
@@ -10,6 +11,17 @@ import type { SimConfig, Vec3 } from './types';
 export class MeshBuilder {
   positions: number[] = [];
   indices: number[] = [];
+  /** Mesh layers; triangles go into `current` (0, 'house', until `use`). */
+  layerIds = ['house'];
+  triangleLayer: number[] = [];
+  current = 0;
+
+  /** Put the triangles added from now on into layer `id` (added if new). */
+  use(id: string): this {
+    if (!this.layerIds.includes(id)) this.layerIds.push(id);
+    this.current = this.layerIds.indexOf(id);
+    return this;
+  }
 
   /** One triangle, wound so its `(b − a) × (c − a)` normal points along `facing`. */
   tri(a: Vec3, b: Vec3, c: Vec3, facing: Vec3): this {
@@ -20,6 +32,7 @@ export class MeshBuilder {
     const base = this.positions.length / 3;
     for (const p of ok ? [a, b, c] : [a, c, b]) this.positions.push(...p);
     this.indices.push(base, base + 1, base + 2);
+    this.triangleLayer.push(this.current);
     return this;
   }
 
@@ -51,9 +64,11 @@ export class MeshBuilder {
   /** The sim state `loadSim` would produce for this mesh (index first, then per-triangle data). */
   state(config: SimConfig = simConfig()): SimState {
     const mesh: Mesh = { positions: new Float32Array(this.positions), indices: new Uint32Array(this.indices) };
+    const before = mesh.indices.slice();
     const index = buildRayIndex(mesh);
+    const layer = layersAfterReorder(before, new Uint8Array(this.triangleLayer), mesh.indices, mesh.positions.length / 3);
     const normals = faceNormals(mesh);
-    return createSimState(mesh, index, normals, tagMaterials(mesh, normals), config);
+    return createSimState(mesh, index, normals, tagMaterials(mesh, normals), config, { layer, ids: [...this.layerIds] });
   }
 }
 

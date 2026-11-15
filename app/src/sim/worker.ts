@@ -1,4 +1,5 @@
 // The simulation worker (mvp-design.md 2 and 5). Message dispatch only; the work lives in the modules it calls.
+import { applySetLayers } from './layers';
 import { applySetMaterials, applySetQuality } from './library';
 import { loadSim, type SimState } from './load';
 import { reverbJob } from './reverb-job';
@@ -54,6 +55,9 @@ self.onmessage = (event: MessageEvent<ToWorker>) => {
         break;
       case 'setQuality':
         applySetQuality(need(msg.type), msg);
+        break;
+      case 'setLayers':
+        applySetLayers(need(msg.type), msg);
         break;
     }
   } catch (err) {

@@ -1,5 +1,6 @@
 // Every surface crossed along a straight segment, merged into walls (mvp-design.md 5.2 steps 2 and 3).
 import { DoubleSide, Ray } from 'three';
+import { firstTracedHit, isTraced } from './layers';
 import { surfaceAt } from './library';
 import type { SimState } from './load';
 import type { Bands, Vec3 } from './types';
@@ -11,7 +12,8 @@ const ray = new Ray();
 /**
  * Walls crossed between `from` and `to`, and the strength left per band after them.
  *
- * - Every triangle hit along the segment counts, from either side (the index is traced `DoubleSide`).
+ * - Every triangle hit along the segment counts, from either side (the index is traced `DoubleSide`), except
+ *   triangles of untraced layers (`setLayers`).
  * - Crossings are grouped into walls: a crossing joins the current wall while it is closer than `wallMergeDistance`
  *   to that wall's FIRST crossing. Measuring from the first crossing (not the previous one) keeps a run of bumpy
  *   scan triangles from chaining into one endless "wall" across a room.
@@ -30,9 +32,10 @@ export function crossSegment(state: SimState, from: Vec3, to: Vec3, maxWalls = I
   ray.direction.set(dx / length, dy / length, dz / length);
   if (maxWalls === 0) {
     // Only a clear segment passes: the nearest hit is enough, and much cheaper than collecting all of them.
-    return state.index.bvh.raycastFirst(ray, DoubleSide, 0, length) ? null : { walls: 0, transmission };
+    return firstTracedHit(state, from, [dx, dy, dz], length) ? null : { walls: 0, transmission };
   }
-  const hits = state.index.bvh.raycast(ray, DoubleSide, 0, length);
+  let hits = state.index.bvh.raycast(ray, DoubleSide, 0, length);
+  if (!state.allTraced) hits = hits.filter(h => h.faceIndex != null && isTraced(state, h.faceIndex));
   if (hits.length === 0) return { walls: 0, transmission };
   const distances = new Float64Array(hits.length);
   const triangles = new Int32Array(hits.length);

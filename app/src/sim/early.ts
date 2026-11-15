@@ -1,7 +1,7 @@
 // Early reflections (mvp-design.md 5.3): rays from the listener, each bounce point connected to every source
 // ("diffuse rain"), with the connecting leg allowed to cut through up to `maxLegWalls` walls.
 import { crossSegment } from './crossings';
-import { firstHit } from './geometry';
+import { firstTracedHit } from './layers';
 import { surfaceAt } from './library';
 import type { SimState } from './load';
 import { isDegenerate } from './normals';
@@ -101,7 +101,7 @@ export function traceRays(
   rng: Rng,
   opts: RayTraceOptions,
 ): Pick<EarlyResult, 'meanFreePath' | 'averageAbsorption'> {
-  const { config, normals, index } = state;
+  const { config, normals } = state;
   const { rays, bounces, maxLegWalls, minStrength, onHit, onContribution } = opts;
   const c = config.speedOfSound;
   const reference = sources.map(s => {
@@ -127,7 +127,7 @@ export function traceRays(
     let travelled = 0;
 
     for (let b = 0; b < bounces; b++) {
-      const hit = firstHit(index, origin, dir);
+      const hit = firstTracedHit(state, origin, dir);
       if (!hit) break; // the ray left the building
       travelled += hit.distance;
       segmentSum += hit.distance;
