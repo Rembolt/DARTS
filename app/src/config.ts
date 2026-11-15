@@ -29,13 +29,13 @@ export const SIM = {
 export const SOURCES = {
   indoor: {
     id: 'indoor',
-    file: '/audio/indoor.mp3', // "Dream Sweet in Sea Major", supplied locally, git-ignored
+    file: '/audio/indoor.ogg', // Beethoven, Minuet in G (public domain recording); see app/public/audio/CREDITS.md
     position: null as Vec3 | null, // null: use the tour's start position
     startHeightOffset: -0.4,
   },
   outdoor: {
     id: 'outdoor',
-    file: '/audio/outdoor.mp3', // a free highway loop; credit it in app/public/audio/CREDITS.md
+    file: '/audio/outdoor.ogg', // "Highway from Bridge, Center" (public domain); see app/public/audio/CREDITS.md
     distance: 25, // metres from the tour's start position
     compassAngleDeg: 0, // pick by ear (open question Q1)
     height: 1.5,
@@ -57,7 +57,10 @@ export const BLUEPRINT = {
 export const AUDIO = {
   slotPannerDistance: 2,
   maxDelay: 0.2,
-  delayJumpThreshold: 0.002,
+  // Walking moves most echo delays 2–10 ms per trace; dipping those muted the echoes on every trace (a stutter).
+  // They glide instead, slowly enough that the pitch bend stays small (~9 cents for 5 ms); only bigger jumps dip.
+  delayJumpThreshold: 0.01,
+  delayGlideTime: 0.25,
   delayDipTime: 0.02,
   reverbGain: 1.5,
   reverbCrossfade: 0.2,

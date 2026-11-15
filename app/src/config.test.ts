@@ -44,10 +44,10 @@ describe('echo slot directions (spec 5.4)', () => {
 
 describe('sources and audio (spec 4.3, 6)', () => {
   it('has the spec values', () => {
-    expect(SOURCES.indoor).toEqual({ id: 'indoor', file: '/audio/indoor.mp3', position: null, startHeightOffset: -0.4 });
-    expect(SOURCES.outdoor).toEqual({ id: 'outdoor', file: '/audio/outdoor.mp3', distance: 25, compassAngleDeg: 0, height: 1.5, levelDb: -12 });
+    expect(SOURCES.indoor).toEqual({ id: 'indoor', file: '/audio/indoor.ogg', position: null, startHeightOffset: -0.4 });
+    expect(SOURCES.outdoor).toEqual({ id: 'outdoor', file: '/audio/outdoor.ogg', distance: 25, compassAngleDeg: 0, height: 1.5, levelDb: -12 });
     expect(AUDIO).toMatchObject({
-      slotPannerDistance: 2, maxDelay: 0.2, delayJumpThreshold: 0.002, delayDipTime: 0.02,
+      slotPannerDistance: 2, maxDelay: 0.2, delayJumpThreshold: 0.01, delayGlideTime: 0.25, delayDipTime: 0.02,
       reverbGain: 1.5, reverbCrossfade: 0.2, reverbChangeThreshold: 0.15, smoothing: 0.08,
       lowShelfHz: 250, highShelfHz: 2000, echoTimeMin: 0.2, echoTimeMax: 2.5, listenerMoveThreshold: 0.25,
     });
