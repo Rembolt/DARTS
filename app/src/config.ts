@@ -64,6 +64,19 @@ export const AUDIO = {
   echoTimeMin: 0.2,
   echoTimeMax: 2.5,
   listenerMoveThreshold: 0.25,
+  /** Master volume cap after the limiter (linear gain). */
+  masterVolume: 0.8,
+  /** The limiter: a `DynamicsCompressorNode` set hard so the sum of 26 panners never clips. */
+  limiterThresholdDb: -6,
+  limiterKneeDb: 0,
+  limiterRatio: 20,
+  limiterAttack: 0.003,
+  limiterRelease: 0.25,
+  /** Shelf filters never go further than this from flat, in dB, whatever the simulation says. */
+  maxShelfDb: 24,
+  /** Stand-in loops synthesized when a sound file is missing (seconds). */
+  standInIndoorSeconds: 4,
+  standInOutdoorSeconds: 8,
 };
 
 /** The 12 fixed echo slot directions: the corners of an icosahedron (mvp-design.md 5.4). */
